@@ -20,13 +20,13 @@ static const char *TAG = "home_screen";
 LV_FONT_DECLARE(myFont24)   /* 声明myFont24字体 */
 
 /* ==================== 老黄历颜色定义 ==================== */
-/* 复古纸张色调 */
-#define ALMANAC_PAPER_BG        lv_color_hex(0xFFF9E6)      /* 暖黄纸张背景 */
+/* 复古纸张色调 - 继承主题暖色系 */
+#define ALMANAC_PAPER_BG        THEME_CARD_BG               /* 暖黄纸张背景 */
 #define ALMANAC_PAPER_BORDER    lv_color_hex(0xD4B896)      /* 纸边棕色 */
-#define ALMANAC_RED             lv_color_hex(0xC41E3A)      /* 中国红（强调色） */
-#define ALMANAC_GOLD            lv_color_hex(0xCFAF47)      /* 金色（吉日标记） */
-#define ALMANAC_TEXT_BLACK      lv_color_hex(0x2D2D2D)      /* 正文深灰黑 */
-#define ALMANAC_TEXT_GRAY       lv_color_hex(0x666666)      /* 副文本灰 */
+#define ALMANAC_RED             THEME_ACCENT_RED            /* 中国红（强调色） */
+#define ALMANAC_GOLD            THEME_ACCENT_GOLD           /* 金色（吉日标记） */
+#define ALMANAC_TEXT_BLACK      THEME_TEXT_PRIMARY          /* 正文深咖色 */
+#define ALMANAC_TEXT_GRAY       THEME_TEXT_SECONDARY        /* 副文本暖灰棕 */
 
 /* ==================== 屏幕对象 ==================== */
 static lv_obj_t *s_home_screen = NULL;
@@ -167,8 +167,8 @@ static lv_obj_t* create_lunar_panel(lv_obj_t *parent)
 
     /* 添加阴影效果，模拟纸张质感 */
     lv_obj_set_style_shadow_width(panel, 15, LV_PART_MAIN);
-    lv_obj_set_style_shadow_color(panel, lv_color_hex(0x000000), LV_PART_MAIN);
-    lv_obj_set_style_shadow_opa(panel, LV_OPA_20, LV_PART_MAIN);
+    lv_obj_set_style_shadow_color(panel, THEME_SHADOW_COLOR, LV_PART_MAIN);
+    lv_obj_set_style_shadow_opa(panel, THEME_SHADOW_OPA, LV_PART_MAIN);
     lv_obj_set_style_shadow_ofs_x(panel, 5, LV_PART_MAIN);
     lv_obj_set_style_shadow_ofs_y(panel, 5, LV_PART_MAIN);
 
@@ -211,7 +211,7 @@ static lv_obj_t* create_lunar_panel(lv_obj_t *parent)
     lv_obj_t *term_label = lv_label_create(term_container);
     lv_label_set_text(term_label, s_solar_term);
     lv_obj_set_style_text_font(term_label, &myFont24, LV_PART_MAIN);
-    lv_obj_set_style_text_color(term_label, lv_color_white(), LV_PART_MAIN);
+    lv_obj_set_style_text_color(term_label, THEME_TEXT_ON_DARK, LV_PART_MAIN);
     lv_obj_center(term_label);
 
     /* ========== 分隔线 ========== */
@@ -284,7 +284,7 @@ static lv_obj_t* create_weather_panel(lv_obj_t *parent)
     lv_obj_t *icon_label = lv_label_create(weather_icon_container);
     lv_label_set_text(icon_label, "日");  /* 暂用图片符号，未来替换 */
     lv_obj_set_style_text_font(icon_label, &myFont24, LV_PART_MAIN);
-    lv_obj_set_style_text_color(icon_label, lv_color_white(), LV_PART_MAIN);
+    lv_obj_set_style_text_color(icon_label, THEME_TEXT_ON_DARK, LV_PART_MAIN);
     lv_obj_center(icon_label);
 
     /* ========== 温度（超大字） ========== */
@@ -324,7 +324,7 @@ static lv_obj_t* create_weather_panel(lv_obj_t *parent)
     lv_obj_t *wake_label = lv_label_create(wake_btn);
     lv_label_set_text(wake_label, "模拟唤醒词");
     lv_obj_set_style_text_font(wake_label, &myFont24, LV_PART_MAIN);
-    lv_obj_set_style_text_color(wake_label, lv_color_white(), LV_PART_MAIN);
+    lv_obj_set_style_text_color(wake_label, THEME_TEXT_ON_DARK, LV_PART_MAIN);
     lv_obj_center(wake_label);
     lv_obj_add_event_cb(wake_btn, simulate_wake_btn_cb, LV_EVENT_CLICKED, NULL);
 
@@ -336,7 +336,7 @@ static lv_obj_t* create_weather_panel(lv_obj_t *parent)
     lv_obj_t *gesture_label = lv_label_create(gesture_btn);
     lv_label_set_text(gesture_label, "模拟挥手");
     lv_obj_set_style_text_font(gesture_label, &myFont24, LV_PART_MAIN);
-    lv_obj_set_style_text_color(gesture_label, lv_color_white(), LV_PART_MAIN);
+    lv_obj_set_style_text_color(gesture_label, THEME_TEXT_PRIMARY, LV_PART_MAIN);
     lv_obj_center(gesture_label);
     lv_obj_add_event_cb(gesture_btn, simulate_gesture_btn_cb, LV_EVENT_CLICKED, NULL);
 

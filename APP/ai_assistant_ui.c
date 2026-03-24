@@ -15,6 +15,7 @@
 #include "avatar_screen.h"      /* 新增：小柚子化身界面 */
 #include "control_panel.h"
 #include "viewer_screen.h"
+#include "ui_theme.h"           /* 统一主题定义 */
 #include "esp_lvgl_port.h"
 #include "esp_log.h"
 #include "esp_heap_caps.h"
@@ -75,7 +76,7 @@ static void display_diagnostic_test(void)
         lv_label_set_text(label, "LVGL Rendering Test");
         lv_obj_align(label, LV_ALIGN_CENTER, 0, 0);
         lv_obj_set_style_text_font(label, &myFont24, LV_PART_MAIN);
-        lv_obj_set_style_text_color(label, lv_color_white(), LV_PART_MAIN);
+        lv_obj_set_style_text_color(label, THEME_TEXT_ON_DARK, LV_PART_MAIN);
         
         lvgl_port_unlock();
     }
@@ -121,8 +122,8 @@ static lv_obj_t* create_debug_screen(void)
     lv_obj_set_size(screen, LV_HOR_RES, LV_VER_RES);
     lv_obj_clear_flag(screen, LV_OBJ_FLAG_SCROLLABLE);
 
-    /* 设置背景为黑色以便观察 */
-    lv_obj_set_style_bg_color(screen, lv_color_black(), LV_PART_MAIN);
+    /* 设置背景为暖深棕以便观察 */
+    lv_obj_set_style_bg_color(screen, THEME_BG_DARK, LV_PART_MAIN);
     lv_obj_set_style_bg_opa(screen, LV_OPA_COVER, LV_PART_MAIN);
 
     /* 添加调试信息标签 */
@@ -154,7 +155,7 @@ static lv_obj_t* create_debug_screen(void)
     lv_obj_t *diag_label = lv_label_create(diag_btn);
     lv_label_set_text(diag_label, "Run Diagnostics");
     lv_obj_set_style_text_font(diag_label, &myFont24, LV_PART_MAIN);
-    lv_obj_set_style_text_color(diag_label, lv_color_black(), LV_PART_MAIN);
+    lv_obj_set_style_text_color(diag_label, THEME_TEXT_PRIMARY, LV_PART_MAIN);
     lv_obj_add_event_cb(diag_btn, diag_test_cb, LV_EVENT_CLICKED, NULL);
 
     /* 添加测试按钮 */
@@ -164,7 +165,7 @@ static lv_obj_t* create_debug_screen(void)
     lv_obj_t *btn_label = lv_label_create(test_btn);
     lv_label_set_text(btn_label, "Test Colors");
     lv_obj_set_style_text_font(btn_label, &myFont24, LV_PART_MAIN);
-    lv_obj_set_style_text_color(btn_label, lv_color_black(), LV_PART_MAIN);
+    lv_obj_set_style_text_color(btn_label, THEME_TEXT_PRIMARY, LV_PART_MAIN);
     lv_obj_add_event_cb(test_btn, debug_color_test_cb, LV_EVENT_CLICKED, NULL);
 
     /* 加载屏幕使其可见 */
@@ -347,7 +348,7 @@ void ui_switch_to_standby(void)
             ESP_LOGI(TAG, "Reusing existing standby screen");
             lv_obj_clear_flag(g_ai_ui.standby_screen, LV_OBJ_FLAG_HIDDEN);
             /* 重新应用背景样式 */
-            lv_obj_set_style_bg_color(g_ai_ui.standby_screen, lv_color_black(), LV_PART_MAIN);
+            lv_obj_set_style_bg_color(g_ai_ui.standby_screen, THEME_BG_DARK, LV_PART_MAIN);
             lv_obj_set_style_bg_opa(g_ai_ui.standby_screen, LV_OPA_COVER, LV_PART_MAIN);
             /* 重新启动呼吸动画 */
             restart_breathing_animations();
@@ -641,15 +642,15 @@ void ui_show_gesture_feedback(const char *text)
         lv_obj_set_height(g_ai_ui.gesture_feedback, 50);
         lv_obj_align(g_ai_ui.gesture_feedback, LV_ALIGN_TOP_MID, 0, 20);
 
-        /* 半透明深色背景 */
-        lv_obj_set_style_bg_color(g_ai_ui.gesture_feedback, lv_color_hex(0x1A1A2E), LV_PART_MAIN);
+        /* 半透明暖深色背景 */
+        lv_obj_set_style_bg_color(g_ai_ui.gesture_feedback, THEME_BG_DARK, LV_PART_MAIN);
         lv_obj_set_style_bg_opa(g_ai_ui.gesture_feedback, LV_OPA_90, LV_PART_MAIN);
         lv_obj_set_style_radius(g_ai_ui.gesture_feedback, 25, LV_PART_MAIN);
         lv_obj_set_style_border_width(g_ai_ui.gesture_feedback, 2, LV_PART_MAIN);
-        lv_obj_set_style_border_color(g_ai_ui.gesture_feedback, lv_color_hex(0x00B2FF), LV_PART_MAIN);
+        lv_obj_set_style_border_color(g_ai_ui.gesture_feedback, THEME_PRIMARY, LV_PART_MAIN);
         lv_obj_set_style_border_opa(g_ai_ui.gesture_feedback, LV_OPA_70, LV_PART_MAIN);
         lv_obj_set_style_shadow_width(g_ai_ui.gesture_feedback, 15, LV_PART_MAIN);
-        lv_obj_set_style_shadow_color(g_ai_ui.gesture_feedback, lv_color_hex(0x00B2FF), LV_PART_MAIN);
+        lv_obj_set_style_shadow_color(g_ai_ui.gesture_feedback, THEME_PRIMARY, LV_PART_MAIN);
         lv_obj_set_style_shadow_opa(g_ai_ui.gesture_feedback, LV_OPA_30, LV_PART_MAIN);
 
         /* 初始隐藏 */
@@ -658,7 +659,7 @@ void ui_show_gesture_feedback(const char *text)
         /* 创建文本标签 */
         lv_obj_t *label = lv_label_create(g_ai_ui.gesture_feedback);
         lv_obj_set_style_text_font(label, &myFont24, LV_PART_MAIN);
-        lv_obj_set_style_text_color(label, lv_color_white(), LV_PART_MAIN);
+        lv_obj_set_style_text_color(label, THEME_TEXT_ON_DARK, LV_PART_MAIN);
         lv_obj_center(label);
     }
 

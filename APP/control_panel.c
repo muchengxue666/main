@@ -22,14 +22,14 @@
 static const char *TAG = "sticky_note_board";
 LV_FONT_DECLARE(myFont24)
 
-/* ==================== 便签板颜色定义 ==================== */
-#define NOTE_BOARD_BG           lv_color_hex(0xFFF9E6)      /* 暖黄色便签板背景 */
-#define NOTE_CARD_BG            lv_color_hex(0xFFFDF5)      /* 单张便签卡片背景（略白） */
-#define NOTE_CARD_SHADOW        lv_color_hex(0xCCB896)      /* 便签阴影色 */
-#define NOTE_TEXT_PRIMARY       lv_color_hex(0x333333)      /* 主文本深灰 */
-#define NOTE_TEXT_SECONDARY     lv_color_hex(0x666666)      /* 副文本灰 */
-#define NOTE_TEXT_TIME          lv_color_hex(0x999999)      /* 时间文本浅灰 */
-#define NOTE_ACCENT_COLOR       lv_color_hex(0xE57373)      /* 强调色（暖红） */
+/* ==================== 便签板颜色定义 - 继承主题暖色 ==================== */
+#define NOTE_BOARD_BG           THEME_CARD_BG               /* 暖黄色便签板背景 */
+#define NOTE_CARD_BG            THEME_CARD_LIGHT            /* 单张便签卡片背景 */
+#define NOTE_CARD_SHADOW        THEME_SHADOW_COLOR          /* 便签阴影色 */
+#define NOTE_TEXT_PRIMARY       THEME_TEXT_PRIMARY          /* 主文本深咖 */
+#define NOTE_TEXT_SECONDARY     THEME_TEXT_SECONDARY        /* 副文本暖灰 */
+#define NOTE_TEXT_TIME          THEME_TEXT_HINT             /* 时间文本浅暖灰 */
+#define NOTE_ACCENT_COLOR       lv_color_hex(0xD97B75)      /* 强调色（柔和红）*/
 
 /* ==================== 屏幕和控件对象 ==================== */
 static lv_obj_t *s_control_screen = NULL;
@@ -312,8 +312,8 @@ lv_obj_t* create_control_panel(void)
 
     /* 纸张阴影效果 */
     lv_obj_set_style_shadow_width(s_note_board, 20, LV_PART_MAIN);
-    lv_obj_set_style_shadow_color(s_note_board, lv_color_hex(0x000000), LV_PART_MAIN);
-    lv_obj_set_style_shadow_opa(s_note_board, LV_OPA_20, LV_PART_MAIN);
+    lv_obj_set_style_shadow_color(s_note_board, THEME_SHADOW_COLOR, LV_PART_MAIN);
+    lv_obj_set_style_shadow_opa(s_note_board, THEME_SHADOW_OPA, LV_PART_MAIN);
 
     /* Flex布局 */
     lv_obj_set_flex_flow(s_note_board, LV_FLEX_FLOW_COLUMN);
@@ -374,7 +374,7 @@ lv_obj_t* create_control_panel(void)
     lv_obj_t *btn_label = lv_label_create(new_note_btn);
     lv_label_set_text(btn_label, "模拟接收新便签");
     lv_obj_set_style_text_font(btn_label, &myFont24, LV_PART_MAIN);
-    lv_obj_set_style_text_color(btn_label, lv_color_white(), LV_PART_MAIN);
+    lv_obj_set_style_text_color(btn_label, THEME_TEXT_ON_DARK, LV_PART_MAIN);
     lv_obj_center(btn_label);
 
     lv_obj_add_event_cb(new_note_btn, simulate_new_note_cb, LV_EVENT_CLICKED, NULL);

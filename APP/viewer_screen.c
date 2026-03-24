@@ -378,7 +378,7 @@ static void create_gesture_buttons(lv_obj_t *parent)
     lv_label_set_text(wave_label, "Wave\n(Next)");
     lv_obj_center(wave_label);
     lv_obj_set_style_text_align(wave_label, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
-    lv_obj_set_style_text_color(wave_label, lv_color_white(), LV_PART_MAIN);
+    lv_obj_set_style_text_color(wave_label, THEME_TEXT_ON_DARK, LV_PART_MAIN);
     lv_obj_set_style_text_font(wave_label, &myFont24, LV_PART_MAIN);
     
     /* 握拳（放大）按钮 */
@@ -392,7 +392,7 @@ static void create_gesture_buttons(lv_obj_t *parent)
     lv_label_set_text(fist_label, "Fist\n(Zoom)");
     lv_obj_center(fist_label);
     lv_obj_set_style_text_align(fist_label, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
-    lv_obj_set_style_text_color(fist_label, lv_color_white(), LV_PART_MAIN);
+    lv_obj_set_style_text_color(fist_label, THEME_TEXT_ON_DARK, LV_PART_MAIN);
     lv_obj_set_style_text_font(fist_label, &myFont24, LV_PART_MAIN);
 }
 

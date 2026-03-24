@@ -4,7 +4,7 @@
  * @version     V2.0
  * @brief       息屏唤醒页 - 与格完整实现
  ******************************************************************************
- * @attention   全黑背景下的多层呼吸光晕效果 + 点击唤醒转场
+ * @attention   暖深棕背景下的多层呼吸光晕效果 + 点击唤醒转场
  ******************************************************************************
  */
 
@@ -203,11 +203,11 @@ lv_obj_t* create_standby_screen(void)
     lv_obj_set_size(s_standby_screen, LV_HOR_RES, LV_VER_RES);
     lv_obj_clear_flag(s_standby_screen, LV_OBJ_FLAG_SCROLLABLE);
     
-    /* 移除所有继承的样式，确保底色黑 */
+    /* 移除所有继承的样式，确保底色暖深棕 */
     lv_obj_remove_style_all(s_standby_screen);
-    
-    /* 设置全黑背景 */
-    lv_obj_set_style_bg_color(s_standby_screen, lv_color_black(), LV_PART_MAIN);
+
+    /* 设置暖深棕背景（替代纯黑）*/
+    lv_obj_set_style_bg_color(s_standby_screen, THEME_BG_DARK, LV_PART_MAIN);
     lv_obj_set_style_bg_opa(s_standby_screen, LV_OPA_COVER, LV_PART_MAIN);
     
     /* 添加点击事件 */
@@ -270,7 +270,7 @@ lv_obj_t* create_standby_screen(void)
     lv_obj_t *hint_label = lv_label_create(s_standby_screen);
     lv_label_set_text(hint_label, "点击屏幕唤醒");
     lv_obj_align(hint_label, LV_ALIGN_BOTTOM_MID, 0, -40);
-    lv_obj_set_style_text_color(hint_label, THEME_TEXT_HINT, LV_PART_MAIN);
+    lv_obj_set_style_text_color(hint_label, lv_color_hex(0xB8A898), LV_PART_MAIN);  /* 暖灰（深背景提示） */
     lv_obj_set_style_text_font(hint_label, &myFont24, LV_PART_MAIN);
     
     ESP_LOGI(TAG, "Standby screen created successfully");

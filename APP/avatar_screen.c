@@ -40,8 +40,8 @@ static bool s_avatar_animating = false;
 #define FLOAT_DURATION          1500    /* 浮动周期（毫秒） */
 #define AUTO_TRANSITION_MS      5000    /* 自动跳转时间（毫秒） */
 
-/* 小柚子配色 */
-#define AVATAR_GOLD             lv_color_hex(0xCFAF47)  /* 金色（柚子色） */
+/* 小柚子配色 - 使用主题定义 */
+/* AVATAR_GOLD 已移至 ui_theme.h 中定义为 THEME_ACCENT_GOLD */
 
 /* ==================== 问候语数组 ==================== */
 static const char *s_greetings[] = {
@@ -157,9 +157,9 @@ lv_obj_t* create_avatar_screen(void)
     lv_obj_set_size(s_avatar_screen, LV_HOR_RES, LV_VER_RES);
     lv_obj_clear_flag(s_avatar_screen, LV_OBJ_FLAG_SCROLLABLE);
 
-    /* 移除所有继承的样式，设置纯黑背景 */
+    /* 移除所有继承的样式，设置暖深棕背景（替代纯黑）*/
     lv_obj_remove_style_all(s_avatar_screen);
-    lv_obj_set_style_bg_color(s_avatar_screen, lv_color_black(), LV_PART_MAIN);
+    lv_obj_set_style_bg_color(s_avatar_screen, THEME_BG_DARK, LV_PART_MAIN);
     lv_obj_set_style_bg_opa(s_avatar_screen, LV_OPA_COVER, LV_PART_MAIN);
 
     /* 添加点击事件 */
@@ -199,7 +199,7 @@ lv_obj_t* create_avatar_screen(void)
     lv_obj_set_size(s_avatar_face, AVATAR_INNER_SIZE, AVATAR_INNER_SIZE);
     lv_obj_center(s_avatar_face);
     lv_obj_set_style_radius(s_avatar_face, LV_RADIUS_CIRCLE, LV_PART_MAIN);
-    lv_obj_set_style_bg_color(s_avatar_face, AVATAR_GOLD, LV_PART_MAIN);
+    lv_obj_set_style_bg_color(s_avatar_face, THEME_ACCENT_GOLD, LV_PART_MAIN);
     lv_obj_set_style_bg_opa(s_avatar_face, LV_OPA_COVER, LV_PART_MAIN);
     lv_obj_set_style_border_width(s_avatar_face, 0, LV_PART_MAIN);
     lv_obj_clear_flag(s_avatar_face, LV_OBJ_FLAG_SCROLLABLE);
@@ -208,7 +208,7 @@ lv_obj_t* create_avatar_screen(void)
     lv_obj_t *face_label = lv_label_create(s_avatar_face);
     lv_label_set_text(face_label, "^_^");  /* 简单笑脸占位 */
     lv_obj_set_style_text_font(face_label, &myFont24, LV_PART_MAIN);
-    lv_obj_set_style_text_color(face_label, lv_color_hex(0x333333), LV_PART_MAIN);
+    lv_obj_set_style_text_color(face_label, THEME_TEXT_PRIMARY, LV_PART_MAIN);
     lv_obj_center(face_label);
 
     /* 【Lottie 预留接口】
@@ -223,7 +223,7 @@ lv_obj_t* create_avatar_screen(void)
     uint32_t idx = lv_rand(0, GREETING_COUNT - 1);
     lv_label_set_text(s_greeting_label, s_greetings[idx]);
     lv_obj_set_style_text_font(s_greeting_label, &myFont24, LV_PART_MAIN);
-    lv_obj_set_style_text_color(s_greeting_label, THEME_TEXT_PRIMARY, LV_PART_MAIN);
+    lv_obj_set_style_text_color(s_greeting_label, THEME_TEXT_ON_DARK, LV_PART_MAIN);
     lv_obj_set_style_text_align(s_greeting_label, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
 
     /* ========== 底部提示 ========== */
@@ -231,7 +231,7 @@ lv_obj_t* create_avatar_screen(void)
     lv_label_set_text(s_hint_label, "点击屏幕继续");
     lv_obj_align(s_hint_label, LV_ALIGN_BOTTOM_MID, 0, -40);
     lv_obj_set_style_text_font(s_hint_label, &myFont24, LV_PART_MAIN);
-    lv_obj_set_style_text_color(s_hint_label, THEME_TEXT_HINT, LV_PART_MAIN);
+    lv_obj_set_style_text_color(s_hint_label, lv_color_hex(0xB8A898), LV_PART_MAIN);  /* 暖灰（深背景提示） */
 
     /* ========== 启动动画 ========== */
     start_avatar_animations();
