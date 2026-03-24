@@ -1,10 +1,14 @@
 /**
  ******************************************************************************
  * @file        control_panel.c
- * @version     V2.0
- * @brief       硬件控制卡片 - 完整实现
+ * @version     V3.0
+ * @brief       家庭留言便签板 - 实现文件
  ******************************************************************************
- * @attention   亮度滑块 + 风扇开关 + 状态文本 + MQTT预留函数
+ * @attention   温馨的便签留言板界面
+ *              - 浅暖黄色纸张背景
+ *              - 可滚动的便签卡片列表
+ *              - 新便签以动画形式插入
+ *              - 大字体、宽行距（适老化设计）
  ******************************************************************************
  */
 
@@ -13,105 +17,54 @@
 #include "ui_theme.h"
 #include "esp_lvgl_port.h"
 #include "esp_log.h"
+#include <string.h>
 
-static const char *TAG = "control_panel";
+static const char *TAG = "sticky_note_board";
+LV_FONT_DECLARE(myFont24)
 
-LV_FONT_DECLARE(myFont24);
+/* ==================== 便签板颜色定义 ==================== */
+#define NOTE_BOARD_BG           lv_color_hex(0xFFF9E6)      /* 暖黄色便签板背景 */
+#define NOTE_CARD_BG            lv_color_hex(0xFFFDF5)      /* 单张便签卡片背景（略白） */
+#define NOTE_CARD_SHADOW        lv_color_hex(0xCCB896)      /* 便签阴影色 */
+#define NOTE_TEXT_PRIMARY       lv_color_hex(0x333333)      /* 主文本深灰 */
+#define NOTE_TEXT_SECONDARY     lv_color_hex(0x666666)      /* 副文本灰 */
+#define NOTE_TEXT_TIME          lv_color_hex(0x999999)      /* 时间文本浅灰 */
+#define NOTE_ACCENT_COLOR       lv_color_hex(0xE57373)      /* 强调色（暖红） */
 
-/* 屏幕对象 */
+/* ==================== 屏幕和控件对象 ==================== */
 static lv_obj_t *s_control_screen = NULL;
+static lv_obj_t *s_note_board = NULL;           /* 便签板主容器 */
+static lv_obj_t *s_note_scroll = NULL;          /* 可滚动的便签列表 */
+static lv_obj_t *s_title_label = NULL;          /* 标题 */
 
-/* 亮度控制 */
-static lv_obj_t *s_brightness_slider = NULL;
-static lv_obj_t *s_brightness_label = NULL;
-static lv_obj_t *s_brightness_value_label = NULL;
+/* 便签计数 */
+static int s_note_count = 0;
 
-/* 风扇控制 */
-static lv_obj_t *s_fan_switch = NULL;
-static lv_obj_t *s_fan_label = NULL;
-static lv_obj_t *s_fan_status_label = NULL;
-static bool s_fan_state = false;
+/* ==================== 模拟便签数据 ==================== */
+typedef struct {
+    const char *sender;
+    const char *message;
+    const char *time;
+} sticky_note_data_t;
 
-/* ========== 硬件控制的空函数接口（预留未来实现） ========== */
+static const sticky_note_data_t s_sample_notes[] = {
+    {"女儿", "爸,周末我带孩子来看你,记得准备好糖果!", "3小时前"},
+    {"老伴", "记得按时吃药,晚饭在冰箱里热一下就好.", "昨天"},
+    {"儿子", "爸,今天给您打了电话,您在睡觉,明天再聊!", "2天前"},
+    {"孙女", "爷爷我想你啦!等放假就回去看你~", "上周"},
+};
+#define SAMPLE_NOTE_COUNT (sizeof(s_sample_notes) / sizeof(s_sample_notes[0]))
 
-/**
- * @brief       设置屏幕亮度（未来接入硬件）
- * @param       brightness: 亮度值 0-100
- * @retval      无
- * @attention   该函数在未来应扩展为实际的硬件驱动调用
- *              例如：mqtt_publish_topic("device/brightness", brightness)
- */
-static void hw_mock_set_brightness(uint8_t brightness)
-{
-    ESP_LOGI(TAG, "【预留函数】设置屏幕亮度: %d%%", brightness);
-    /* 未来在此处发送 MQTT 指令到后端
-     * 示例：mqtt_publish("home/device/lcd/brightness", brightness) */
-}
+/* 模拟新消息 */
+static const sticky_note_data_t s_new_notes[] = {
+    {"女儿", "爸,今天天气好,记得出去走走!", "刚刚"},
+    {"老伴", "隔壁王阿姨来家里坐坐,我去菜场了.", "刚刚"},
+    {"儿子", "爸,公司忙完了,下周回家看您!", "刚刚"},
+};
+#define NEW_NOTE_COUNT (sizeof(s_new_notes) / sizeof(s_new_notes[0]))
+static int s_new_note_idx = 0;
 
-/**
- * @brief       设置风扇状态（未来接入硬件）
- * @param       state: true=开启, false=关闭
- * @retval      无
- * @attention   该函数在未来应扩展为实际的硬件驱动调用
- *              例如：mqtt_publish_topic("device/fan", state ? "ON" : "OFF")
- */
-static void hw_mock_set_fan(bool state)
-{
-    ESP_LOGI(TAG, "【预留函数】设置风扇状态: %s", state ? "ON" : "OFF");
-    /* 未来在此处发送 MQTT 指令到后端
-     * 示例：mqtt_publish("home/device/fan/control", state ? "ON" : "OFF") */
-}
-
-
-
-/* ========== 亮度滑块事件处理 ========== */
-
-/**
- * @brief       亮度滑块变化回调
- * @param       e: 事件句柄
- * @retval      无
- */
-static void brightness_slider_cb(lv_event_t *e)
-{
-    lv_obj_t *slider = lv_event_get_target(e);
-    int16_t brightness = lv_slider_get_value(slider);
-    
-    /* 更新标签 */
-    char buf[32];
-    snprintf(buf, sizeof(buf), "%d%%", brightness);
-    lv_label_set_text(s_brightness_value_label, buf);
-    
-    /* 调用硬件接口 */
-    hw_mock_set_brightness(brightness);
-    
-    ESP_LOGI(TAG, "Brightness changed to: %d%%", brightness);
-}
-
-/* ========== 风扇开关事件处理 ========== */
-
-/**
- * @brief       风扇开关变化回调
- * @param       e: 事件句柄
- * @retval      无
- */
-static void fan_switch_cb(lv_event_t *e)
-{
-    s_fan_state = lv_obj_has_state(s_fan_switch, LV_STATE_CHECKED);
-    
-    /* 更新状态文本 */
-    lv_label_set_text(s_fan_status_label, s_fan_state ? "ON(运行中)" : "OFF(已关闭)");
-    
-    /* 更新文本颜色 */
-    lv_color_t color = s_fan_state ? THEME_SUCCESS : THEME_ERROR;
-    lv_obj_set_style_text_color(s_fan_status_label, color, LV_PART_MAIN);
-    
-    /* 调用硬件接口 */
-    hw_mock_set_fan(s_fan_state);
-    
-    ESP_LOGI(TAG, "Fan switched to: %s", s_fan_state ? "ON" : "OFF");
-}
-
-/* ========== 导航栏回调函数 ========== */
+/* ==================== 导航栏回调函数 ==================== */
 static void nav_btn_standby_cb(lv_event_t *e)
 {
     ui_switch_to_standby();
@@ -145,7 +98,7 @@ static void create_nav_bar(lv_obj_t *parent)
     lv_obj_set_flex_flow(nav_bar, LV_FLEX_FLOW_ROW);
     lv_obj_set_flex_align(nav_bar, LV_FLEX_ALIGN_SPACE_AROUND, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
     lv_obj_set_style_pad_all(nav_bar, 8, LV_PART_MAIN);
-    
+
     /* 息屏按钮 */
     lv_obj_t *btn_standby = lv_btn_create(nav_bar);
     lv_obj_set_size(btn_standby, 70, 50);
@@ -155,7 +108,7 @@ static void create_nav_bar(lv_obj_t *parent)
     lv_obj_set_style_text_font(label_standby, &myFont24, LV_PART_MAIN);
     lv_obj_center(label_standby);
     lv_obj_add_event_cb(btn_standby, nav_btn_standby_cb, LV_EVENT_CLICKED, NULL);
-    
+
     /* 主页按钮 */
     lv_obj_t *btn_home = lv_btn_create(nav_bar);
     lv_obj_set_size(btn_home, 70, 50);
@@ -165,16 +118,16 @@ static void create_nav_bar(lv_obj_t *parent)
     lv_obj_set_style_text_font(label_home, &myFont24, LV_PART_MAIN);
     lv_obj_center(label_home);
     lv_obj_add_event_cb(btn_home, nav_btn_home_cb, LV_EVENT_CLICKED, NULL);
-    
-    /* 控制面板按钮 - 高亮显示当前界面 */
+
+    /* 便签板按钮 - 高亮显示当前界面 */
     lv_obj_t *btn_control = lv_btn_create(nav_bar);
     lv_obj_set_size(btn_control, 70, 50);
     ui_apply_button_light_style(btn_control);
     lv_obj_t *label_control = lv_label_create(btn_control);
-    lv_label_set_text(label_control, "Panel");
+    lv_label_set_text(label_control, "Note");
     lv_obj_set_style_text_font(label_control, &myFont24, LV_PART_MAIN);
     lv_obj_center(label_control);
-    
+
     /* 查看器按钮 */
     lv_obj_t *btn_viewer = lv_btn_create(nav_bar);
     lv_obj_set_size(btn_viewer, 70, 50);
@@ -186,185 +139,255 @@ static void create_nav_bar(lv_obj_t *parent)
     lv_obj_add_event_cb(btn_viewer, nav_btn_viewer_cb, LV_EVENT_CLICKED, NULL);
 }
 
-/* ========== UI 构建函数 ========== */
-
 /**
- * @brief       创建亮度控制卡片
- * @param       parent: 父对象
- * @retval      卡片对象指针
+ * @brief       新便签淡入动画完成回调
+ * @param       a: 动画句柄
+ * @retval      无
  */
-static lv_obj_t* create_brightness_card(lv_obj_t *parent)
+static void note_anim_complete_cb(lv_anim_t *a)
 {
-    /* 卡片容器 */
-    lv_obj_t *card = lv_obj_create(parent);
-    lv_obj_set_width(card, LV_HOR_RES - THEME_PAD_LARGE * 2);
-    lv_obj_set_height(card, 400);
-    ui_apply_card_style(card, THEME_OPA_FULL);
-    
-    /* 卡片标题 */
-    s_brightness_label = lv_label_create(card);
-    lv_label_set_text(s_brightness_label, "屏幕亮度");
-    lv_obj_align(s_brightness_label, LV_ALIGN_TOP_LEFT, THEME_PAD_MEDIUM, 20);
-    ui_apply_title_style(s_brightness_label);
-    lv_obj_set_style_text_font(s_brightness_label, &myFont24, LV_PART_MAIN);
-    lv_obj_set_style_pad_top(s_brightness_label, 10, LV_PART_MAIN);
-    
-    /* 亮度值显示 */
-    s_brightness_value_label = lv_label_create(card);
-    lv_label_set_text(s_brightness_value_label, "100%");
-    lv_obj_align(s_brightness_value_label, LV_ALIGN_TOP_RIGHT, -THEME_PAD_MEDIUM, 20);
-    lv_obj_set_style_text_color(s_brightness_value_label, THEME_PRIMARY, LV_PART_MAIN);
-    lv_obj_set_style_text_font(s_brightness_value_label, &myFont24, LV_PART_MAIN);
-    lv_obj_set_style_pad_top(s_brightness_value_label, 10, LV_PART_MAIN);
-    
-    /* 亮度滑块 */
-    s_brightness_slider = lv_slider_create(card);
-    lv_slider_set_range(s_brightness_slider, 10, 100);
-    lv_slider_set_value(s_brightness_slider, 100, LV_ANIM_OFF);
-    
-    /* 1. 修复尺寸问题：使用百分比宽度 (安全且适配好) */
-    lv_obj_set_width(s_brightness_slider, lv_pct(85)); // 宽度占卡片的 85%
-    lv_obj_set_height(s_brightness_slider, 60); 
-    lv_obj_align(s_brightness_slider, LV_ALIGN_CENTER, 0, 30);
-    
-    /* 2. 轨道背景 (LV_PART_MAIN) - 设置为深灰色，衬托白色的滑块 */
-    lv_obj_set_style_bg_color(s_brightness_slider, lv_color_hex(0x333333), LV_PART_MAIN); // 深灰色
-    lv_obj_set_style_bg_opa(s_brightness_slider, LV_OPA_COVER, LV_PART_MAIN); 
-    lv_obj_set_style_radius(s_brightness_slider, 30, LV_PART_MAIN); 
-    
-    /* 去除内边距，让填充区完全贴合 */
-    lv_obj_set_style_pad_all(s_brightness_slider, 0, LV_PART_MAIN); 
-    
-    /* 3. 填充区 (LV_PART_INDICATOR) - 设置为纯白色 */
-    lv_obj_set_style_bg_color(s_brightness_slider, lv_color_white(), LV_PART_INDICATOR);
-    lv_obj_set_style_bg_opa(s_brightness_slider, LV_OPA_COVER, LV_PART_INDICATOR);
-    lv_obj_set_style_radius(s_brightness_slider, 30, LV_PART_INDICATOR);
-    
-    /* 4. 拖动把手 (LV_PART_KNOB) - 隐藏圆点，全靠条本身滑动 */
-    lv_obj_set_style_bg_opa(s_brightness_slider, LV_OPA_TRANSP, LV_PART_KNOB);
-    lv_obj_set_style_shadow_opa(s_brightness_slider, LV_OPA_TRANSP, LV_PART_KNOB);
-    
-    lv_obj_add_event_cb(s_brightness_slider, brightness_slider_cb, LV_EVENT_VALUE_CHANGED, NULL);
-    
-    return card;
+    /* 动画完成，无需额外操作 */
 }
 
 /**
- * @brief       创建风扇控制卡片
+ * @brief       新便签透明度动画回调
+ * @param       obj: 目标对象
+ * @param       v: 当前动画值
+ * @retval      无
+ */
+static void note_fade_in_cb(void *obj, int32_t v)
+{
+    lv_obj_set_style_opa((lv_obj_t *)obj, v, LV_PART_MAIN);
+}
+
+/**
+ * @brief       创建单张便签卡片
  * @param       parent: 父对象
+ * @param       sender: 发送者
+ * @param       message: 消息内容
+ * @param       time: 时间字符串
+ * @param       animate: 是否使用动画
  * @retval      卡片对象指针
  */
-static lv_obj_t* create_fan_card(lv_obj_t *parent)
+static lv_obj_t* create_note_card(lv_obj_t *parent, const char *sender,
+                                   const char *message, const char *time, bool animate)
 {
-    /* 卡片容器 */
+    /* 便签卡片容器 */
     lv_obj_t *card = lv_obj_create(parent);
-    lv_obj_set_width(card, LV_HOR_RES - THEME_PAD_LARGE * 2);
-    lv_obj_set_height(card, 250);
-    ui_apply_card_style(card, THEME_OPA_FULL);
+    lv_obj_set_width(card, lv_pct(95));
+    lv_obj_set_height(card, LV_SIZE_CONTENT);
+
+    /* 便签纸张效果 */
+    lv_obj_set_style_bg_color(card, NOTE_CARD_BG, LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(card, LV_OPA_COVER, LV_PART_MAIN);
+    lv_obj_set_style_radius(card, THEME_RADIUS_MEDIUM, LV_PART_MAIN);
+    lv_obj_set_style_border_width(card, 1, LV_PART_MAIN);
+    lv_obj_set_style_border_color(card, NOTE_CARD_SHADOW, LV_PART_MAIN);
+    lv_obj_set_style_border_opa(card, LV_OPA_50, LV_PART_MAIN);
+
+    /* 纸张阴影效果 */
+    lv_obj_set_style_shadow_width(card, 12, LV_PART_MAIN);
+    lv_obj_set_style_shadow_color(card, NOTE_CARD_SHADOW, LV_PART_MAIN);
+    lv_obj_set_style_shadow_opa(card, LV_OPA_40, LV_PART_MAIN);
+    lv_obj_set_style_shadow_ofs_x(card, 3, LV_PART_MAIN);
+    lv_obj_set_style_shadow_ofs_y(card, 3, LV_PART_MAIN);
+
+    /* 卡片内边距 */
+    lv_obj_set_style_pad_all(card, THEME_PAD_LARGE, LV_PART_MAIN);
+    lv_obj_set_style_pad_row(card, 8, LV_PART_MAIN);
+
+    /* 使用Flex布局 */
     lv_obj_set_flex_flow(card, LV_FLEX_FLOW_COLUMN);
-    // 卡片内的元素从上到下排列
-    lv_obj_set_flex_align(card, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, 
-                          LV_FLEX_ALIGN_CENTER);
-    
-    /* 卡片标题与开关行 (修复：宽度设为 100%) */
-    lv_obj_t *title_cont = lv_obj_create(card);
-    lv_obj_set_width(title_cont, lv_pct(100)); // <--- 关键修改：自动填满卡片可用宽度
-    lv_obj_set_height(title_cont, 70);
-    lv_obj_set_style_bg_opa(title_cont, 0, LV_PART_MAIN); // 透明背景
-    lv_obj_set_style_border_width(title_cont, 0, LV_PART_MAIN); // 去除边框
-    lv_obj_set_style_pad_all(title_cont, 0, LV_PART_MAIN); // 必须去除内边距，否则内部控件会偏移
-    
-    // Flex 布局：两端对齐 (SPACE_BETWEEN)
-    lv_obj_set_flex_flow(title_cont, LV_FLEX_FLOW_ROW);
-    lv_obj_set_flex_align(title_cont, LV_FLEX_ALIGN_SPACE_BETWEEN, LV_FLEX_ALIGN_CENTER, 
-                          LV_FLEX_ALIGN_CENTER);
-    
-    /* 标题文本 */
-    s_fan_label = lv_label_create(title_cont);
-    lv_label_set_text(s_fan_label, "排风扇");
-    lv_obj_set_style_text_color(s_fan_label, lv_color_white(), LV_PART_MAIN); // 确保在深色背景可见
-    lv_obj_set_style_text_font(s_fan_label, &myFont24, LV_PART_MAIN);
-    
-    /* 开关控件 */
-    s_fan_switch = lv_switch_create(title_cont);
-    lv_obj_set_width(s_fan_switch, 80);  /* 现代UI：稍宽一点的开关 */
-    lv_obj_set_height(s_fan_switch, 40); 
-    lv_obj_add_event_cb(s_fan_switch, fan_switch_cb, LV_EVENT_VALUE_CHANGED, NULL);
-    
-    /* 风扇状态展示区 (修复：宽度设为 100%) */
-    lv_obj_t *status_cont = lv_obj_create(card);
-    lv_obj_set_width(status_cont, lv_pct(100)); // <--- 关键修改：自动填满卡片可用宽度
-    lv_obj_set_height(status_cont, 100);
-    
-    // 给状态区一点微弱的背景色，增加层次感
-    lv_obj_set_style_bg_color(status_cont, lv_color_hex(0x333333), LV_PART_MAIN);
-    lv_obj_set_style_bg_opa(status_cont, LV_OPA_80, LV_PART_MAIN);
-    lv_obj_set_style_radius(status_cont, 10, LV_PART_MAIN);
-    lv_obj_set_style_border_width(status_cont, 0, LV_PART_MAIN); // 现代风通常不要边框，靠背景色区分
-    
-    // 状态区内部文本居中排列
-    lv_obj_set_flex_flow(status_cont, LV_FLEX_FLOW_COLUMN);
-    lv_obj_set_flex_align(status_cont, LV_FLEX_ALIGN_SPACE_EVENLY, LV_FLEX_ALIGN_CENTER, 
-                          LV_FLEX_ALIGN_CENTER);
-    
-    /* 状态标题 */
-    lv_obj_t *status_title = lv_label_create(status_cont);
-    lv_label_set_text(status_title, "当前状态");
-    lv_obj_set_style_text_color(status_title, lv_color_hex(0xAAAAAA), LV_PART_MAIN); // 浅灰色提示字
-    lv_obj_set_style_text_font(status_title, &myFont24, LV_PART_MAIN);
-    
-    /* 状态文本 */
-    s_fan_status_label = lv_label_create(status_cont);
-    lv_label_set_text(s_fan_status_label, "OFF(已关闭)");
-    // 没开的时候设为红色/灰色，打开的时候可以在 callback 里设为绿色
-    lv_obj_set_style_text_color(s_fan_status_label, lv_color_hex(0xFF4C4C), LV_PART_MAIN); 
-    lv_obj_set_style_text_font(s_fan_status_label, &myFont24, LV_PART_MAIN);
-    
+    lv_obj_set_flex_align(card, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
+
+    /* ========== 消息内容（大字） ========== */
+    lv_obj_t *msg_label = lv_label_create(card);
+    lv_label_set_text(msg_label, message);
+    lv_obj_set_width(msg_label, lv_pct(100));
+    lv_obj_set_height(msg_label, LV_SIZE_CONTENT);
+    lv_label_set_long_mode(msg_label, LV_LABEL_LONG_WRAP);
+    lv_obj_set_style_text_font(msg_label, &myFont24, LV_PART_MAIN);
+    lv_obj_set_style_text_color(msg_label, NOTE_TEXT_PRIMARY, LV_PART_MAIN);
+    lv_obj_set_style_text_line_space(msg_label, 8, LV_PART_MAIN);  /* 宽行距，适老化 */
+
+    /* ========== 底部信息行：发送者 + 时间 ========== */
+    lv_obj_t *info_row = lv_obj_create(card);
+    lv_obj_set_width(info_row, lv_pct(100));
+    lv_obj_set_height(info_row, LV_SIZE_CONTENT);
+    lv_obj_set_style_bg_opa(info_row, LV_OPA_TRANSP, LV_PART_MAIN);
+    lv_obj_set_style_border_width(info_row, 0, LV_PART_MAIN);
+    lv_obj_set_style_pad_all(info_row, 0, LV_PART_MAIN);
+    lv_obj_set_flex_flow(info_row, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(info_row, LV_FLEX_ALIGN_SPACE_BETWEEN, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+
+    /* 发送者 */
+    lv_obj_t *sender_label = lv_label_create(info_row);
+    char sender_str[64];
+    snprintf(sender_str, sizeof(sender_str), "-- %s", sender);
+    lv_label_set_text(sender_label, sender_str);
+    lv_obj_set_style_text_font(sender_label, &myFont24, LV_PART_MAIN);
+    lv_obj_set_style_text_color(sender_label, NOTE_ACCENT_COLOR, LV_PART_MAIN);
+
+    /* 时间 */
+    lv_obj_t *time_label = lv_label_create(info_row);
+    lv_label_set_text(time_label, time);
+    lv_obj_set_style_text_font(time_label, &myFont24, LV_PART_MAIN);
+    lv_obj_set_style_text_color(time_label, NOTE_TEXT_TIME, LV_PART_MAIN);
+
+    /* ========== 如果需要动画 ========== */
+    if (animate) {
+        /* 初始透明 */
+        lv_obj_set_style_opa(card, LV_OPA_TRANSP, LV_PART_MAIN);
+
+        /* 淡入动画 */
+        lv_anim_t fade_anim;
+        lv_anim_init(&fade_anim);
+        lv_anim_set_var(&fade_anim, card);
+        lv_anim_set_exec_cb(&fade_anim, note_fade_in_cb);
+        lv_anim_set_values(&fade_anim, LV_OPA_TRANSP, LV_OPA_COVER);
+        lv_anim_set_time(&fade_anim, THEME_ANIM_NORMAL);
+        lv_anim_set_ready_cb(&fade_anim, note_anim_complete_cb);
+        lv_anim_start(&fade_anim);
+    }
+
+    s_note_count++;
     return card;
 }
 
 /**
- * @brief       创建硬件控制卡片页面
+ * @brief       模拟接收新便签按钮回调
+ * @param       e: 事件句柄
+ * @retval      无
+ */
+static void simulate_new_note_cb(lv_event_t *e)
+{
+    ESP_LOGI(TAG, "模拟接收新便签...");
+
+    if (!s_note_scroll) return;
+
+    /* 获取下一条模拟消息 */
+    const sticky_note_data_t *note = &s_new_notes[s_new_note_idx % NEW_NOTE_COUNT];
+    s_new_note_idx++;
+
+    /* 创建新便签卡片（带动画） */
+    lv_obj_t *new_card = create_note_card(s_note_scroll, note->sender, note->message, note->time, true);
+
+    /* 将新卡片移动到列表顶部 */
+    lv_obj_move_to_index(new_card, 0);
+
+    /* 滚动到顶部显示新便签 */
+    lv_obj_scroll_to_y(s_note_scroll, 0, LV_ANIM_ON);
+
+    ESP_LOGI(TAG, "新便签已添加: [%s] %s", note->sender, note->message);
+}
+
+/**
+ * @brief       创建家庭留言便签板
  * @param       无
  * @retval      屏幕对象指针
  */
 lv_obj_t* create_control_panel(void)
 {
-    ESP_LOGI(TAG, "Creating control panel...");
-    
+    ESP_LOGI(TAG, "Creating sticky note board...");
+
     /* 创建屏幕 */
     s_control_screen = lv_obj_create(NULL);
     lv_obj_set_size(s_control_screen, LV_HOR_RES, LV_VER_RES);
     lv_obj_clear_flag(s_control_screen, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_set_style_bg_color(s_control_screen, THEME_BG_COLOR, LV_PART_MAIN);
     lv_obj_set_style_bg_opa(s_control_screen, LV_OPA_COVER, LV_PART_MAIN);
-    lv_obj_set_flex_flow(s_control_screen, LV_FLEX_FLOW_COLUMN);
-    lv_obj_set_flex_align(s_control_screen, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, 
-                          LV_FLEX_ALIGN_CENTER);
-    
-    /* 顶部标题 */
-    lv_obj_t *title = lv_label_create(s_control_screen);
-    lv_label_set_text(title, "硬件控制");
-    lv_obj_set_style_text_color(title, THEME_TEXT_PRIMARY, LV_PART_MAIN);
-    lv_obj_set_style_text_font(title, &myFont24, LV_PART_MAIN);
-    lv_obj_set_style_pad_top(title, THEME_PAD_LARGE, LV_PART_MAIN);
-    lv_obj_set_style_pad_bottom(title, THEME_PAD_LARGE, LV_PART_MAIN);
-    
-    /* 创建亮度控制卡片 */
-    create_brightness_card(s_control_screen);
-    
-    /* 创建风扇控制卡片 */
-    create_fan_card(s_control_screen);
-    
+
+    /* ========== 便签板主容器 ========== */
+    s_note_board = lv_obj_create(s_control_screen);
+    lv_obj_set_width(s_note_board, lv_pct(95));
+    lv_obj_set_height(s_note_board, LV_VER_RES - 75);  /* 减去导航栏高度 */
+    lv_obj_align(s_note_board, LV_ALIGN_TOP_MID, 0, 5);
+
+    /* 暖黄色便签板背景 */
+    lv_obj_set_style_bg_color(s_note_board, NOTE_BOARD_BG, LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(s_note_board, LV_OPA_COVER, LV_PART_MAIN);
+    lv_obj_set_style_radius(s_note_board, THEME_RADIUS_LARGE, LV_PART_MAIN);
+    lv_obj_set_style_border_width(s_note_board, 2, LV_PART_MAIN);
+    lv_obj_set_style_border_color(s_note_board, NOTE_CARD_SHADOW, LV_PART_MAIN);
+
+    /* 纸张阴影效果 */
+    lv_obj_set_style_shadow_width(s_note_board, 20, LV_PART_MAIN);
+    lv_obj_set_style_shadow_color(s_note_board, lv_color_hex(0x000000), LV_PART_MAIN);
+    lv_obj_set_style_shadow_opa(s_note_board, LV_OPA_20, LV_PART_MAIN);
+
+    /* Flex布局 */
+    lv_obj_set_flex_flow(s_note_board, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_flex_align(s_note_board, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_style_pad_all(s_note_board, THEME_PAD_MEDIUM, LV_PART_MAIN);
+    lv_obj_set_style_pad_row(s_note_board, THEME_PAD_MEDIUM, LV_PART_MAIN);
+    lv_obj_clear_flag(s_note_board, LV_OBJ_FLAG_SCROLLABLE);
+
+    /* ========== 标题栏 ========== */
+    lv_obj_t *title_row = lv_obj_create(s_note_board);
+    lv_obj_set_width(title_row, lv_pct(100));
+    lv_obj_set_height(title_row, LV_SIZE_CONTENT);
+    lv_obj_set_style_bg_opa(title_row, LV_OPA_TRANSP, LV_PART_MAIN);
+    lv_obj_set_style_border_width(title_row, 0, LV_PART_MAIN);
+    lv_obj_set_style_pad_all(title_row, THEME_PAD_SMALL, LV_PART_MAIN);
+    lv_obj_set_flex_flow(title_row, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(title_row, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+
+    /* 标题文本 */
+    s_title_label = lv_label_create(title_row);
+    lv_label_set_text(s_title_label, "来自家人的叮嘱");
+    lv_obj_set_style_text_font(s_title_label, &myFont24, LV_PART_MAIN);
+    lv_obj_set_style_text_color(s_title_label, NOTE_TEXT_PRIMARY, LV_PART_MAIN);
+
+    /* ========== 可滚动的便签列表 ========== */
+    s_note_scroll = lv_obj_create(s_note_board);
+    lv_obj_set_width(s_note_scroll, lv_pct(100));
+    lv_obj_set_flex_grow(s_note_scroll, 1);  /* 占据剩余空间 */
+    lv_obj_set_style_bg_opa(s_note_scroll, LV_OPA_TRANSP, LV_PART_MAIN);
+    lv_obj_set_style_border_width(s_note_scroll, 0, LV_PART_MAIN);
+    lv_obj_set_style_pad_all(s_note_scroll, 0, LV_PART_MAIN);
+    lv_obj_set_style_pad_row(s_note_scroll, THEME_PAD_MEDIUM, LV_PART_MAIN);
+
+    /* Flex布局，垂直排列 */
+    lv_obj_set_flex_flow(s_note_scroll, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_flex_align(s_note_scroll, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+
+    /* 添加示例便签 */
+    for (int i = 0; i < SAMPLE_NOTE_COUNT; i++) {
+        create_note_card(s_note_scroll,
+                        s_sample_notes[i].sender,
+                        s_sample_notes[i].message,
+                        s_sample_notes[i].time,
+                        false);  /* 初始便签不需要动画 */
+    }
+
+    /* ========== 模拟接收新便签按钮 ========== */
+    lv_obj_t *new_note_btn = lv_btn_create(s_note_board);
+    lv_obj_set_width(new_note_btn, lv_pct(80));
+    lv_obj_set_height(new_note_btn, 50);
+    lv_obj_set_style_bg_color(new_note_btn, NOTE_ACCENT_COLOR, LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(new_note_btn, LV_OPA_COVER, LV_PART_MAIN);
+    lv_obj_set_style_radius(new_note_btn, THEME_RADIUS_MEDIUM, LV_PART_MAIN);
+    lv_obj_set_style_shadow_width(new_note_btn, 8, LV_PART_MAIN);
+    lv_obj_set_style_shadow_color(new_note_btn, NOTE_ACCENT_COLOR, LV_PART_MAIN);
+    lv_obj_set_style_shadow_opa(new_note_btn, LV_OPA_30, LV_PART_MAIN);
+
+    lv_obj_t *btn_label = lv_label_create(new_note_btn);
+    lv_label_set_text(btn_label, "模拟接收新便签");
+    lv_obj_set_style_text_font(btn_label, &myFont24, LV_PART_MAIN);
+    lv_obj_set_style_text_color(btn_label, lv_color_white(), LV_PART_MAIN);
+    lv_obj_center(btn_label);
+
+    lv_obj_add_event_cb(new_note_btn, simulate_new_note_cb, LV_EVENT_CLICKED, NULL);
+
     /* 添加底部导航栏 */
     create_nav_bar(s_control_screen);
-    
-    ESP_LOGI(TAG, "Control panel created successfully");
+
+    ESP_LOGI(TAG, "Sticky note board created successfully with %d notes", s_note_count);
     return s_control_screen;
 }
 
 /**
- * @brief       删除硬件控制卡片页面
+ * @brief       删除家庭留言便签板
  * @param       无
  * @retval      无
  */
@@ -373,5 +396,35 @@ void delete_control_panel(void)
     if (s_control_screen) {
         lv_obj_del(s_control_screen);
         s_control_screen = NULL;
+        s_note_board = NULL;
+        s_note_scroll = NULL;
+        s_title_label = NULL;
+        s_note_count = 0;
     }
+}
+
+/**
+ * @brief       模拟接收新便签（外部接口）
+ * @param       sender: 发送者名称
+ * @param       message: 消息内容
+ * @param       time: 时间字符串
+ * @retval      无
+ */
+void sticky_note_add_message(const char *sender, const char *message, const char *time)
+{
+    if (!s_note_scroll) {
+        ESP_LOGW(TAG, "Note scroll not initialized");
+        return;
+    }
+
+    ESP_LOGI(TAG, "Adding new note from external call: [%s] %s", sender, message);
+
+    /* 创建新便签卡片（带动画） */
+    lv_obj_t *new_card = create_note_card(s_note_scroll, sender, message, time, true);
+
+    /* 将新卡片移动到列表顶部 */
+    lv_obj_move_to_index(new_card, 0);
+
+    /* 滚动到顶部显示新便签 */
+    lv_obj_scroll_to_y(s_note_scroll, 0, LV_ANIM_ON);
 }

@@ -29,8 +29,9 @@ extern "C" {
 /* UI状态枚举 */
 typedef enum {
     UI_STATE_STANDBY,           // 息屏唤醒状态
-    UI_STATE_HOME,              // 多模态交互主页
-    UI_STATE_CONTROL,           // 硬件控制抽屉
+    UI_STATE_AVATAR,            // 小柚子化身界面（唤醒后过渡）
+    UI_STATE_HOME,              // 多模态交互主页（老黄历）
+    UI_STATE_CONTROL,           // 家庭留言便签板
     UI_STATE_VIEWER             // 知识库与影像视图
 } ui_state_t;
 
@@ -75,9 +76,14 @@ typedef struct {
     
     // 各界面句柄缓存
     lv_obj_t *standby_screen;
+    lv_obj_t *avatar_screen;    // 小柚子化身界面
     lv_obj_t *home_screen;
     lv_obj_t *control_panel;
     lv_obj_t *viewer_screen;
+
+    // 全局手势反馈指示器
+    lv_obj_t *gesture_feedback;
+    lv_timer_t *gesture_hide_timer;
     
     // 动画句柄
     lv_anim_t wake_up_anim;
@@ -111,6 +117,7 @@ void ai_assistant_ui_deinit(void);
 
 /* 状态切换函数 */
 void ui_switch_to_standby(void);
+void ui_switch_to_avatar(void);     /* 新增：切换到小柚子化身界面 */
 void ui_switch_to_home(void);
 void ui_switch_to_control(void);
 void ui_switch_to_viewer(void);
@@ -120,6 +127,10 @@ void ui_trigger_wake_up(void);
 void ui_update_streaming_text(char ch, bool is_complete);
 void ui_update_hardware_status(uint8_t brightness, bool fan_on);
 void ui_handle_gesture_event(gesture_type_t gesture, int16_t x, int16_t y);
+
+/* 全局手势反馈 */
+void ui_show_gesture_feedback(const char *text);    /* 新增：显示手势反馈提示 */
+void ui_hide_gesture_feedback(void);                /* 新增：隐藏手势反馈提示 */
 
 /* 样式初始化 */
 void init_modern_styles(void);

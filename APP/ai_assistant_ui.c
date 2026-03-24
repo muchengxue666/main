@@ -12,6 +12,7 @@
 #include "ai_assistant_ui.h"
 #include "standby_screen.h"
 #include "home_screen.h"
+#include "avatar_screen.h"      /* 新增：小柚子化身界面 */
 #include "control_panel.h"
 #include "viewer_screen.h"
 #include "esp_lvgl_port.h"
@@ -447,14 +448,14 @@ void ui_switch_to_viewer(void)
     if (g_ai_ui.current_state == UI_STATE_VIEWER) {
         return;
     }
-    
+
     /* 锁定UI互斥锁 */
     if (lvgl_port_lock(0)) {
         /* 隐藏当前屏幕 */
         if (g_ai_ui.current_screen) {
             lv_obj_add_flag(g_ai_ui.current_screen, LV_OBJ_FLAG_HIDDEN);
         }
-        
+
         /* 创建或显示影像查看器 */
         if (!g_ai_ui.viewer_screen) {
             g_ai_ui.viewer_screen = create_viewer_screen();
@@ -473,18 +474,59 @@ void ui_switch_to_viewer(void)
 }
 
 /**
- * @brief       触发唤醒动画并切换到主页
+ * @brief       切换到小柚子化身界面
  * @param       无
  * @retval      无
+ */
+void ui_switch_to_avatar(void)
+{
+    ESP_LOGI(TAG, "Switching to avatar screen...");
+
+    if (g_ai_ui.current_state == UI_STATE_AVATAR) {
+        return;
+    }
+
+    /* 锁定UI互斥锁 */
+    if (lvgl_port_lock(pdMS_TO_TICKS(500))) {
+        /* 隐藏当前屏幕 */
+        if (g_ai_ui.current_screen) {
+            lv_obj_add_flag(g_ai_ui.current_screen, LV_OBJ_FLAG_HIDDEN);
+        }
+
+        /* 创建或显示化身界面 */
+        if (!g_ai_ui.avatar_screen) {
+            g_ai_ui.avatar_screen = create_avatar_screen();
+        } else {
+            lv_obj_clear_flag(g_ai_ui.avatar_screen, LV_OBJ_FLAG_HIDDEN);
+            restart_avatar_animations();
+        }
+
+        g_ai_ui.current_screen = g_ai_ui.avatar_screen;
+        g_ai_ui.current_state = UI_STATE_AVATAR;
+
+        /* 加载屏幕使其可见 */
+        lv_scr_load(g_ai_ui.avatar_screen);
+
+        lvgl_port_unlock();
+        ESP_LOGI(TAG, "Avatar screen loaded successfully");
+    }
+}
+
+/**
+ * @brief       触发唤醒动画并切换到化身界面
+ * @param       无
+ * @retval      无
+ * @attention   修改后流程：standby -> avatar -> home
  */
 void ui_trigger_wake_up(void)
 {
     if (g_ai_ui.current_state != UI_STATE_STANDBY) {
         return;
     }
-    
-    /* 在息屏状态下触发唤醒 */
-    trigger_standby_wake_up();
+
+    ESP_LOGI(TAG, "Wake up triggered, switching to avatar screen...");
+    /* 现在唤醒后先进入小柚子化身界面，而不是直接进入主页 */
+    ui_switch_to_avatar();
 }
 
 /**
@@ -553,14 +595,136 @@ void init_modern_styles(void)
     /* 启用抗锯齿 */
     lv_theme_default_init(NULL, lv_palette_main(LV_PALETTE_BLUE), lv_palette_main(LV_PALETTE_RED),
                          LV_THEME_DEFAULT_DARK, LV_FONT_DEFAULT);
-    
+
     /* 设置全局默认样式 */
     lv_style_t global_style;
     lv_style_init(&global_style);
     lv_style_set_radius(&global_style, 8);  // 圆角半径
     lv_style_set_border_width(&global_style, 0);
     lv_style_set_pad_all(&global_style, 8);
-    
+
     /* 应用到所有对象 */
     lv_obj_add_style(lv_scr_act(), &global_style, 0);
+}
+
+/* ==================== 全局手势反馈指示器 ==================== */
+
+/**
+ * @brief       手势反馈自动隐藏定时器回调
+ * @param       timer: 定时器句柄
+ * @retval      无
+ */
+static void gesture_hide_timer_cb(lv_timer_t *timer)
+{
+    ui_hide_gesture_feedback();
+}
+
+/**
+ * @brief       显示手势反馈提示
+ * @param       text: 提示文本（如"◀ 切换到音乐"）
+ * @retval      无
+ * @attention   非侵入式设计，2秒后自动隐藏
+ */
+void ui_show_gesture_feedback(const char *text)
+{
+    ESP_LOGI(TAG, "Showing gesture feedback: %s", text);
+
+    if (!lvgl_port_lock(pdMS_TO_TICKS(100))) {
+        return;
+    }
+
+    /* 如果指示器不存在，创建它 */
+    if (!g_ai_ui.gesture_feedback) {
+        /* 创建全局叠加层（固定在屏幕顶部） */
+        g_ai_ui.gesture_feedback = lv_obj_create(lv_layer_top());
+        lv_obj_set_width(g_ai_ui.gesture_feedback, lv_pct(60));
+        lv_obj_set_height(g_ai_ui.gesture_feedback, 50);
+        lv_obj_align(g_ai_ui.gesture_feedback, LV_ALIGN_TOP_MID, 0, 20);
+
+        /* 半透明深色背景 */
+        lv_obj_set_style_bg_color(g_ai_ui.gesture_feedback, lv_color_hex(0x1A1A2E), LV_PART_MAIN);
+        lv_obj_set_style_bg_opa(g_ai_ui.gesture_feedback, LV_OPA_90, LV_PART_MAIN);
+        lv_obj_set_style_radius(g_ai_ui.gesture_feedback, 25, LV_PART_MAIN);
+        lv_obj_set_style_border_width(g_ai_ui.gesture_feedback, 2, LV_PART_MAIN);
+        lv_obj_set_style_border_color(g_ai_ui.gesture_feedback, lv_color_hex(0x00B2FF), LV_PART_MAIN);
+        lv_obj_set_style_border_opa(g_ai_ui.gesture_feedback, LV_OPA_70, LV_PART_MAIN);
+        lv_obj_set_style_shadow_width(g_ai_ui.gesture_feedback, 15, LV_PART_MAIN);
+        lv_obj_set_style_shadow_color(g_ai_ui.gesture_feedback, lv_color_hex(0x00B2FF), LV_PART_MAIN);
+        lv_obj_set_style_shadow_opa(g_ai_ui.gesture_feedback, LV_OPA_30, LV_PART_MAIN);
+
+        /* 初始隐藏 */
+        lv_obj_add_flag(g_ai_ui.gesture_feedback, LV_OBJ_FLAG_HIDDEN);
+
+        /* 创建文本标签 */
+        lv_obj_t *label = lv_label_create(g_ai_ui.gesture_feedback);
+        lv_obj_set_style_text_font(label, &myFont24, LV_PART_MAIN);
+        lv_obj_set_style_text_color(label, lv_color_white(), LV_PART_MAIN);
+        lv_obj_center(label);
+    }
+
+    /* 更新文本 */
+    lv_obj_t *label = lv_obj_get_child(g_ai_ui.gesture_feedback, 0);
+    if (label) {
+        lv_label_set_text(label, text);
+    }
+
+    /* 显示指示器 */
+    lv_obj_clear_flag(g_ai_ui.gesture_feedback, LV_OBJ_FLAG_HIDDEN);
+
+    /* 滑入动画（从顶部滑入） */
+    lv_anim_t slide_anim;
+    lv_anim_init(&slide_anim);
+    lv_anim_set_var(&slide_anim, g_ai_ui.gesture_feedback);
+    lv_anim_set_values(&slide_anim, -60, 20);
+    lv_anim_set_time(&slide_anim, 200);
+    lv_anim_set_exec_cb(&slide_anim, (lv_anim_exec_xcb_t)(void *)lv_obj_set_y);
+    lv_anim_set_path_cb(&slide_anim, lv_anim_path_ease_out);
+    lv_anim_start(&slide_anim);
+
+    /* 设置自动隐藏定时器（2秒后） */
+    if (g_ai_ui.gesture_hide_timer) {
+        lv_timer_del(g_ai_ui.gesture_hide_timer);
+    }
+    g_ai_ui.gesture_hide_timer = lv_timer_create(gesture_hide_timer_cb, 2000, NULL);
+    lv_timer_set_repeat_count(g_ai_ui.gesture_hide_timer, 1);
+
+    lvgl_port_unlock();
+}
+
+/**
+ * @brief       隐藏手势反馈提示
+ * @param       无
+ * @retval      无
+ */
+void ui_hide_gesture_feedback(void)
+{
+    if (!g_ai_ui.gesture_feedback) {
+        return;
+    }
+
+    if (!lvgl_port_lock(pdMS_TO_TICKS(100))) {
+        return;
+    }
+
+    /* 滑出动画（向上滑出） */
+    lv_anim_t slide_anim;
+    lv_anim_init(&slide_anim);
+    lv_anim_set_var(&slide_anim, g_ai_ui.gesture_feedback);
+    lv_anim_set_values(&slide_anim, 20, -60);
+    lv_anim_set_time(&slide_anim, 200);
+    lv_anim_set_exec_cb(&slide_anim, (lv_anim_exec_xcb_t)(void *)lv_obj_set_y);
+    lv_anim_set_path_cb(&slide_anim, lv_anim_path_ease_in);
+    lv_anim_start(&slide_anim);
+
+    /* 延迟隐藏 */
+    lv_obj_add_flag(g_ai_ui.gesture_feedback, LV_OBJ_FLAG_HIDDEN);
+
+    /* 清理定时器 */
+    if (g_ai_ui.gesture_hide_timer) {
+        lv_timer_del(g_ai_ui.gesture_hide_timer);
+        g_ai_ui.gesture_hide_timer = NULL;
+    }
+
+    lvgl_port_unlock();
+    ESP_LOGI(TAG, "Gesture feedback hidden");
 }
