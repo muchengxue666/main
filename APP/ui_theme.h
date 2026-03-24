@@ -81,6 +81,9 @@
 #define THEME_ANIM_SLOW         500
 #define THEME_ANIM_VERY_SLOW    800
 
+/* 屏幕过渡动画时长（毫秒）- 适老化柔和节奏 */
+#define THEME_SCREEN_ANIM_TIME  600
+
 /* ==================== 透明度 ==================== */
 #define THEME_OPA_FULL          LV_OPA_COVER
 #define THEME_OPA_SEMITRANS     LV_OPA_80

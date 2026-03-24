@@ -327,13 +327,7 @@ void ui_switch_to_standby(void)
     if (lvgl_port_lock(pdMS_TO_TICKS(1000))) {
         ESP_LOGI(TAG, "LVGL port locked successfully");
         
-        /* 隐藏当前屏幕（如果存在且不是待机屏幕） */
-        if (g_ai_ui.current_screen && g_ai_ui.current_screen != g_ai_ui.standby_screen) {
-            lv_obj_add_flag(g_ai_ui.current_screen, LV_OBJ_FLAG_HIDDEN);
-            ESP_LOGI(TAG, "Current screen hidden");
-        }
-        
-        /* 创建或显示息屏唤醒页 */
+        /* 创建或复用息屏唤醒页 */
         if (!g_ai_ui.standby_screen) {
             ESP_LOGI(TAG, "Creating new standby screen during initialization");
             g_ai_ui.standby_screen = create_standby_screen();
@@ -346,7 +340,6 @@ void ui_switch_to_standby(void)
             }
         } else {
             ESP_LOGI(TAG, "Reusing existing standby screen");
-            lv_obj_clear_flag(g_ai_ui.standby_screen, LV_OBJ_FLAG_HIDDEN);
             /* 重新应用背景样式 */
             lv_obj_set_style_bg_color(g_ai_ui.standby_screen, THEME_BG_DARK, LV_PART_MAIN);
             lv_obj_set_style_bg_opa(g_ai_ui.standby_screen, LV_OPA_COVER, LV_PART_MAIN);
@@ -358,9 +351,14 @@ void ui_switch_to_standby(void)
         g_ai_ui.current_screen = g_ai_ui.standby_screen;
         g_ai_ui.current_state = UI_STATE_STANDBY;
 
-        /* 加载屏幕使其可见 */
-        lv_scr_load(g_ai_ui.standby_screen);
-        ESP_LOGI(TAG, "Standby screen loaded successfully");
+        /* 使用滑屏动画加载屏幕（从底部滑入，600ms）*/
+        lv_scr_load_anim(g_ai_ui.standby_screen,
+                         LV_SCR_LOAD_ANIM_MOVE_TOP,
+                         THEME_SCREEN_ANIM_TIME,
+                         0,      /* 无延迟 */
+                         false   /* 不自动删除旧屏幕，保留缓存复用 */
+        );
+        ESP_LOGI(TAG, "Standby screen loaded with slide animation");
 
         lvgl_port_unlock();
         ESP_LOGI(TAG, "LVGL port unlocked");
@@ -379,26 +377,24 @@ void ui_switch_to_home(void)
     if (g_ai_ui.current_state == UI_STATE_HOME) {
         return;
     }
-    
+
     /* 锁定UI互斥锁 */
     if (lvgl_port_lock(0)) {
-        /* 隐藏当前屏幕 */
-        if (g_ai_ui.current_screen) {
-            lv_obj_add_flag(g_ai_ui.current_screen, LV_OBJ_FLAG_HIDDEN);
-        }
-        
-        /* 创建或显示主页 */
+        /* 创建或复用主页 */
         if (!g_ai_ui.home_screen) {
             g_ai_ui.home_screen = create_home_screen();
-        } else {
-            lv_obj_clear_flag(g_ai_ui.home_screen, LV_OBJ_FLAG_HIDDEN);
         }
 
         g_ai_ui.current_screen = g_ai_ui.home_screen;
         g_ai_ui.current_state = UI_STATE_HOME;
 
-        /* 加载屏幕使其可见 */
-        lv_scr_load(g_ai_ui.home_screen);
+        /* 使用滑屏动画加载屏幕（从底部滑入，600ms）*/
+        lv_scr_load_anim(g_ai_ui.home_screen,
+                         LV_SCR_LOAD_ANIM_MOVE_TOP,
+                         THEME_SCREEN_ANIM_TIME,
+                         0,      /* 无延迟 */
+                         false   /* 不自动删除旧屏幕，保留缓存复用 */
+        );
 
         lvgl_port_unlock();
     }
@@ -414,26 +410,24 @@ void ui_switch_to_control(void)
     if (g_ai_ui.current_state == UI_STATE_CONTROL) {
         return;
     }
-    
+
     /* 锁定UI互斥锁 */
     if (lvgl_port_lock(0)) {
-        /* 隐藏当前屏幕 */
-        if (g_ai_ui.current_screen) {
-            lv_obj_add_flag(g_ai_ui.current_screen, LV_OBJ_FLAG_HIDDEN);
-        }
-        
-        /* 创建或显示控制面板 */
+        /* 创建或复用控制面板 */
         if (!g_ai_ui.control_panel) {
             g_ai_ui.control_panel = create_control_panel();
-        } else {
-            lv_obj_clear_flag(g_ai_ui.control_panel, LV_OBJ_FLAG_HIDDEN);
         }
 
         g_ai_ui.current_screen = g_ai_ui.control_panel;
         g_ai_ui.current_state = UI_STATE_CONTROL;
 
-        /* 加载屏幕使其可见 */
-        lv_scr_load(g_ai_ui.control_panel);
+        /* 使用滑屏动画加载屏幕（从底部滑入，600ms）*/
+        lv_scr_load_anim(g_ai_ui.control_panel,
+                         LV_SCR_LOAD_ANIM_MOVE_TOP,
+                         THEME_SCREEN_ANIM_TIME,
+                         0,      /* 无延迟 */
+                         false   /* 不自动删除旧屏幕，保留缓存复用 */
+        );
 
         lvgl_port_unlock();
     }
@@ -452,23 +446,21 @@ void ui_switch_to_viewer(void)
 
     /* 锁定UI互斥锁 */
     if (lvgl_port_lock(0)) {
-        /* 隐藏当前屏幕 */
-        if (g_ai_ui.current_screen) {
-            lv_obj_add_flag(g_ai_ui.current_screen, LV_OBJ_FLAG_HIDDEN);
-        }
-
-        /* 创建或显示影像查看器 */
+        /* 创建或复用影像查看器 */
         if (!g_ai_ui.viewer_screen) {
             g_ai_ui.viewer_screen = create_viewer_screen();
-        } else {
-            lv_obj_clear_flag(g_ai_ui.viewer_screen, LV_OBJ_FLAG_HIDDEN);
         }
 
         g_ai_ui.current_screen = g_ai_ui.viewer_screen;
         g_ai_ui.current_state = UI_STATE_VIEWER;
 
-        /* 加载屏幕使其可见 */
-        lv_scr_load(g_ai_ui.viewer_screen);
+        /* 使用滑屏动画加载屏幕（从底部滑入，600ms）*/
+        lv_scr_load_anim(g_ai_ui.viewer_screen,
+                         LV_SCR_LOAD_ANIM_MOVE_TOP,
+                         THEME_SCREEN_ANIM_TIME,
+                         0,      /* 无延迟 */
+                         false   /* 不自动删除旧屏幕，保留缓存复用 */
+        );
 
         lvgl_port_unlock();
     }
@@ -489,27 +481,26 @@ void ui_switch_to_avatar(void)
 
     /* 锁定UI互斥锁 */
     if (lvgl_port_lock(pdMS_TO_TICKS(500))) {
-        /* 隐藏当前屏幕 */
-        if (g_ai_ui.current_screen) {
-            lv_obj_add_flag(g_ai_ui.current_screen, LV_OBJ_FLAG_HIDDEN);
-        }
-
-        /* 创建或显示化身界面 */
+        /* 创建或复用化身界面 */
         if (!g_ai_ui.avatar_screen) {
             g_ai_ui.avatar_screen = create_avatar_screen();
         } else {
-            lv_obj_clear_flag(g_ai_ui.avatar_screen, LV_OBJ_FLAG_HIDDEN);
             restart_avatar_animations();
         }
 
         g_ai_ui.current_screen = g_ai_ui.avatar_screen;
         g_ai_ui.current_state = UI_STATE_AVATAR;
 
-        /* 加载屏幕使其可见 */
-        lv_scr_load(g_ai_ui.avatar_screen);
+        /* 使用滑屏动画加载屏幕（从底部滑入，600ms）*/
+        lv_scr_load_anim(g_ai_ui.avatar_screen,
+                         LV_SCR_LOAD_ANIM_MOVE_TOP,
+                         THEME_SCREEN_ANIM_TIME,
+                         0,      /* 无延迟 */
+                         false   /* 不自动删除旧屏幕，保留缓存复用 */
+        );
 
         lvgl_port_unlock();
-        ESP_LOGI(TAG, "Avatar screen loaded successfully");
+        ESP_LOGI(TAG, "Avatar screen loaded with slide animation");
     }
 }
 

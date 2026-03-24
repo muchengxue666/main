@@ -83,31 +83,6 @@ static void icon_pulse_cb(void *obj, int32_t v)
 }
 
 /**
- * @brief       屏幕亮度渐变动画回调
- * @param       obj: 目标对象
- * @param       v: 当前动画值 (0-255)
- * @retval      无
- */
-static void screen_brightness_cb(void *obj, int32_t v)
-{
-    if (s_standby_screen) {
-        lv_obj_set_style_bg_opa(s_standby_screen, v, LV_PART_MAIN);
-    }
-}
-
-/**
- * @brief       唤醒动画完成回调
- * @param       a: 动画句柄
- * @retval      无
- */
-static void wake_up_complete_cb(lv_anim_t *a)
-{
-    ESP_LOGI(TAG, "Wake-up sequence complete, switching to home");
-    ui_switch_to_home();
-    s_is_waking_up = false;
-}
-
-/**
  * @brief       屏幕点击事件回调
  * @param       e: 事件句柄
  * @retval      无
@@ -115,26 +90,19 @@ static void wake_up_complete_cb(lv_anim_t *a)
 static void standby_click_cb(lv_event_t *e)
 {
     if (s_is_waking_up) return;
-    
+
     s_is_waking_up = true;
     ESP_LOGI(TAG, "Wake-up triggered!");
-    
+
     /* 停止呼吸动画 */
     lv_anim_del(s_halo_outer, breathing_outer_cb);
     lv_anim_del(s_halo_middle, breathing_middle_cb);
     lv_anim_del(s_halo_inner, breathing_inner_cb);
     lv_anim_del(s_icon_center, icon_pulse_cb);
-    
-    /* 屏幕逐渐变亮 */
-    lv_anim_t brightness_anim;
-    lv_anim_init(&brightness_anim);
-    lv_anim_set_var(&brightness_anim, s_standby_screen);
-    lv_anim_set_exec_cb(&brightness_anim, screen_brightness_cb);
-    lv_anim_set_values(&brightness_anim, LV_OPA_COVER, LV_OPA_0);
-    lv_anim_set_time(&brightness_anim, THEME_ANIM_VERY_SLOW);
-    lv_anim_set_ready_cb(&brightness_anim, wake_up_complete_cb);
-    lv_anim_set_path_cb(&brightness_anim, lv_anim_path_ease_in);
-    lv_anim_start(&brightness_anim);
+
+    /* 直接切换到化身界面（滑屏动画由 lv_scr_load_anim 处理）*/
+    ui_switch_to_home();
+    s_is_waking_up = false;
 }
 
 /**
