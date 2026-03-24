@@ -1,0 +1,566 @@
+/**
+ ******************************************************************************
+ * @file        ai_assistant_ui.c
+ * @version     V1.0
+ * @brief       AI助手现代化UI框架 - 主实现文件
+ ******************************************************************************
+ * @attention   基于LVGL v8.3+的现代化卡片式UI框架
+ *              包含四个核心界面的管理与切换逻辑
+ ******************************************************************************
+ */
+
+#include "ai_assistant_ui.h"
+#include "standby_screen.h"
+#include "home_screen.h"
+#include "control_panel.h"
+#include "viewer_screen.h"
+#include "esp_lvgl_port.h"
+#include "esp_log.h"
+#include "esp_heap_caps.h"
+#include "lcd.h"  // 添加lcd.h以访问lcddev
+
+LV_FONT_DECLARE(myFont24);   /* 声明自定义字体 */
+
+static const char *TAG = "ai_ui";
+
+/* 全局UI句柄定义 */
+ai_ui_handle_t g_ai_ui = {0};
+
+/* 调试模式标志 */
+static bool s_debug_mode = false;
+
+/* 函数前置声明 */
+static void debug_color_test_cb(lv_event_t *e);
+static void diag_test_cb(lv_event_t *e);
+
+/**
+ * @brief       显示诊断测试
+ * @param       无
+ * @retval      无
+ */
+static void display_diagnostic_test(void)
+{
+    ESP_LOGI(TAG, "Starting display diagnostic test...");
+    
+    /* 测试1: 清屏为纯色 */
+    ESP_LOGI(TAG, "Test 1: Pure color screen");
+    if (lvgl_port_lock(0)) {
+        lv_obj_t *screen = lv_scr_act();
+        lv_obj_set_style_bg_color(screen, lv_palette_main(LV_PALETTE_RED), LV_PART_MAIN);
+        lvgl_port_unlock();
+    }
+    vTaskDelay(pdMS_TO_TICKS(1000));
+    
+    if (lvgl_port_lock(0)) {
+        lv_obj_t *screen = lv_scr_act();
+        lv_obj_set_style_bg_color(screen, lv_palette_main(LV_PALETTE_GREEN), LV_PART_MAIN);
+        lvgl_port_unlock();
+    }
+    vTaskDelay(pdMS_TO_TICKS(1000));
+    
+    if (lvgl_port_lock(0)) {
+        lv_obj_t *screen = lv_scr_act();
+        lv_obj_set_style_bg_color(screen, lv_palette_main(LV_PALETTE_BLUE), LV_PART_MAIN);
+        lvgl_port_unlock();
+    }
+    vTaskDelay(pdMS_TO_TICKS(1000));
+    
+    /* 测试2: 检查LVGL渲染 */
+    ESP_LOGI(TAG, "Test 2: LVGL rendering test");
+    if (lvgl_port_lock(0)) {
+        lv_obj_clean(lv_scr_act());
+        
+        lv_obj_t *label = lv_label_create(lv_scr_act());
+        lv_label_set_text(label, "LVGL Rendering Test");
+        lv_obj_align(label, LV_ALIGN_CENTER, 0, 0);
+        lv_obj_set_style_text_font(label, &myFont24, LV_PART_MAIN);
+        lv_obj_set_style_text_color(label, lv_color_white(), LV_PART_MAIN);
+        
+        lvgl_port_unlock();
+    }
+    vTaskDelay(pdMS_TO_TICKS(2000));
+    
+    ESP_LOGI(TAG, "Display diagnostic test completed");
+}
+
+/**
+ * @brief       诊断测试按钮回调
+ * @param       e: 事件句柄
+ * @retval      无
+ */
+static void diag_test_cb(lv_event_t *e)
+{
+    display_diagnostic_test();
+}
+
+/**
+ * @brief       调试模式颜色测试回调
+ * @param       e: 事件句柄
+ * @retval      无
+ */
+static void debug_color_test_cb(lv_event_t *e)
+{
+    /* 测试颜色显示 */
+    lv_obj_t *screen = lv_scr_act();
+    static int color_idx = 0;
+    lv_color_t colors[] = {lv_palette_main(LV_PALETTE_RED), lv_palette_main(LV_PALETTE_GREEN), 
+                          lv_palette_main(LV_PALETTE_BLUE), lv_palette_main(LV_PALETTE_YELLOW), 
+                          lv_color_black()};
+    lv_obj_set_style_bg_color(screen, colors[color_idx++ % 5], LV_PART_MAIN);
+}
+
+/**
+ * @brief       调试模式下的测试屏幕
+ * @param       无
+ * @retval      屏幕对象指针
+ */
+static lv_obj_t* create_debug_screen(void)
+{
+    lv_obj_t *screen = lv_obj_create(NULL);
+    lv_obj_set_size(screen, LV_HOR_RES, LV_VER_RES);
+    lv_obj_clear_flag(screen, LV_OBJ_FLAG_SCROLLABLE);
+
+    /* 设置背景为黑色以便观察 */
+    lv_obj_set_style_bg_color(screen, lv_color_black(), LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(screen, LV_OPA_COVER, LV_PART_MAIN);
+
+    /* 添加调试信息标签 */
+    lv_obj_t *title = lv_label_create(screen);
+    lv_label_set_text(title, "DEBUG MODE - AI Assistant UI");
+    lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 20);
+    lv_obj_set_style_text_font(title, &myFont24, LV_PART_MAIN);
+    lv_obj_set_style_text_color(title, lv_color_white(), LV_PART_MAIN);
+
+    char info_text[256];
+    sprintf(info_text, "Screen: %dx%d\nLVGL: %d.%d.%d\nPSRAM: %s\nState: %d\n\nIf you see this text,\nLCDdev.id: 0x%lX\nResolution OK",
+            LV_HOR_RES, LV_VER_RES,
+            LVGL_VERSION_MAJOR, LVGL_VERSION_MINOR, LVGL_VERSION_PATCH,
+            heap_caps_get_total_size(MALLOC_CAP_SPIRAM) > 0 ? "Available" : "Not Available",
+            g_ai_ui.current_state,
+            (unsigned long)lcddev.id);
+
+    lv_obj_t *info_label = lv_label_create(screen);
+    lv_label_set_text(info_label, info_text);
+    lv_obj_align(info_label, LV_ALIGN_CENTER, 0, 0);
+    lv_obj_set_style_text_font(info_label, &myFont24, LV_PART_MAIN);
+    lv_obj_set_style_text_color(info_label, lv_color_white(), LV_PART_MAIN);
+    lv_label_set_long_mode(info_label, LV_LABEL_LONG_WRAP);
+
+    /* 添加诊断测试按钮 */
+    lv_obj_t *diag_btn = lv_btn_create(screen);
+    lv_obj_set_size(diag_btn, 180, 40);
+    lv_obj_align(diag_btn, LV_ALIGN_BOTTOM_MID, 0, -60);
+    lv_obj_t *diag_label = lv_label_create(diag_btn);
+    lv_label_set_text(diag_label, "Run Diagnostics");
+    lv_obj_set_style_text_font(diag_label, &myFont24, LV_PART_MAIN);
+    lv_obj_set_style_text_color(diag_label, lv_color_black(), LV_PART_MAIN);
+    lv_obj_add_event_cb(diag_btn, diag_test_cb, LV_EVENT_CLICKED, NULL);
+
+    /* 添加测试按钮 */
+    lv_obj_t *test_btn = lv_btn_create(screen);
+    lv_obj_set_size(test_btn, 150, 40);
+    lv_obj_align(test_btn, LV_ALIGN_BOTTOM_MID, 0, -10);
+    lv_obj_t *btn_label = lv_label_create(test_btn);
+    lv_label_set_text(btn_label, "Test Colors");
+    lv_obj_set_style_text_font(btn_label, &myFont24, LV_PART_MAIN);
+    lv_obj_set_style_text_color(btn_label, lv_color_black(), LV_PART_MAIN);
+    lv_obj_add_event_cb(test_btn, debug_color_test_cb, LV_EVENT_CLICKED, NULL);
+
+    /* 加载屏幕使其可见 */
+    lv_scr_load(screen);
+
+    return screen;
+}
+
+/**
+ * @brief       检查显示硬件状态
+ * @param       无
+ * @retval      true: 正常, false: 异常
+ */
+static bool check_display_hardware(void)
+{
+    ESP_LOGI(TAG, "Checking display hardware...");
+    
+    /* 检查LCD设备ID - 使用正确的格式化字符串 */
+    ESP_LOGI(TAG, "LCD Device ID: 0x%08lX", (unsigned long)lcddev.id);
+    ESP_LOGI(TAG, "LCD Resolution: %lux%lu", (unsigned long)lcddev.width, (unsigned long)lcddev.height);
+    
+    if (lcddev.id == 0 || lcddev.id == 0xFFFF) {
+        ESP_LOGE(TAG, "Invalid LCD device ID!");
+        return false;
+    }
+    
+    if (lcddev.width == 0 || lcddev.height == 0) {
+        ESP_LOGE(TAG, "Invalid LCD resolution!");
+        return false;
+    }
+    
+    return true;
+}
+
+/**
+ * @brief       启用调试模式
+ * @param       无
+ * @retval      无
+ */
+void enable_debug_mode(void)
+{
+    s_debug_mode = true;
+    ESP_LOGW(TAG, "Debug mode enabled manually!");
+}
+
+/**
+ * @brief       初始化AI助手UI框架
+ * @param       无
+ * @retval      无
+ */
+void ai_assistant_ui_init(void)
+{
+    ESP_LOGI(TAG, "Initializing AI Assistant UI Framework...");
+    
+    /* 检查强制调试模式 */
+    if (FORCE_DEBUG_MODE) {
+        s_debug_mode = true;
+        ESP_LOGW(TAG, "Force debug mode enabled by compile flag!");
+    }
+    
+    /* 检查显示硬件 */
+    if (!check_display_hardware()) {
+        ESP_LOGE(TAG, "Display hardware check failed! Entering debug mode...");
+        s_debug_mode = true;
+    }
+    
+    /* 创建消息队列 */
+    g_ai_ui.text_queue = xQueueCreate(64, sizeof(stream_text_msg_t));
+    g_ai_ui.hardware_queue = xQueueCreate(10, sizeof(hardware_control_msg_t));
+    g_ai_ui.gesture_queue = xQueueCreate(10, sizeof(gesture_msg_t));
+    
+    if (!g_ai_ui.text_queue || !g_ai_ui.hardware_queue || !g_ai_ui.gesture_queue) {
+        ESP_LOGE(TAG, "Failed to create message queues!");
+        s_debug_mode = true;
+    }
+    
+    /* 创建UI互斥锁 */
+    g_ai_ui.ui_mutex = xSemaphoreCreateMutex();
+    if (!g_ai_ui.ui_mutex) {
+        ESP_LOGE(TAG, "Failed to create UI mutex!");
+        s_debug_mode = true;
+    }
+    
+    /* 初始化现代化样式 */
+    init_modern_styles();
+
+    /* 根据调试模式选择初始屏幕 */
+    if (s_debug_mode) {
+        ESP_LOGW(TAG, "Entering DEBUG MODE due to initialization issues");
+        if (lvgl_port_lock(0)) {
+            ESP_LOGI(TAG, "Creating debug screen...");
+            g_ai_ui.current_screen = create_debug_screen();
+            g_ai_ui.current_state = UI_STATE_STANDBY; // 使用备用状态
+            ESP_LOGI(TAG, "Debug screen created successfully");
+
+            /* 强制刷新屏幕 */
+            lv_refr_now(NULL);
+
+            lvgl_port_unlock();
+        } else {
+            ESP_LOGE(TAG, "Failed to lock LVGL port for debug screen!");
+        }
+    } else {
+        /* 默认进入多模态交互主页 - 而不是息屏唤醒状态 */
+        ESP_LOGI(TAG, "Entering normal mode, switching to HOME screen...");
+        ui_switch_to_standby();
+    }
+
+    ESP_LOGI(TAG, "AI Assistant UI Framework initialized successfully!");
+}
+
+/**
+ * @brief       释放AI助手UI框架资源
+ * @param       无
+ * @retval      无
+ */
+void ai_assistant_ui_deinit(void)
+{
+    if (g_ai_ui.text_queue) {
+        vQueueDelete(g_ai_ui.text_queue);
+        g_ai_ui.text_queue = NULL;
+    }
+    if (g_ai_ui.hardware_queue) {
+        vQueueDelete(g_ai_ui.hardware_queue);
+        g_ai_ui.hardware_queue = NULL;
+    }
+    if (g_ai_ui.gesture_queue) {
+        vQueueDelete(g_ai_ui.gesture_queue);
+        g_ai_ui.gesture_queue = NULL;
+    }
+    if (g_ai_ui.ui_mutex) {
+        vSemaphoreDelete(g_ai_ui.ui_mutex);
+        g_ai_ui.ui_mutex = NULL;
+    }
+}
+
+/**
+ * @brief       切换到息屏唤醒页
+ * @param       无
+ * @retval      无
+ */
+void ui_switch_to_standby(void)
+{
+    ESP_LOGI(TAG, "ui_switch_to_standby() called, current_state=%d", g_ai_ui.current_state);
+    
+    /* 如果已经在待机状态且屏幕已创建，则检查是否需要重新启动动画 */
+    if (g_ai_ui.current_state == UI_STATE_STANDBY && g_ai_ui.standby_screen != NULL) {
+        ESP_LOGI(TAG, "Already in standby state with screen created, checking animations");
+        /* 屏幕已存在，只需重新启动动画即可 */
+        if (lvgl_port_lock(pdMS_TO_TICKS(500))) {
+            restart_breathing_animations();
+            lvgl_port_unlock();
+        }
+        return;
+    }
+    
+    ESP_LOGI(TAG, "Attempting to lock LVGL port...");
+    /* 锁定UI互斥锁 - 增加超时时间确保初始化阶段也能成功 */
+    if (lvgl_port_lock(pdMS_TO_TICKS(1000))) {
+        ESP_LOGI(TAG, "LVGL port locked successfully");
+        
+        /* 隐藏当前屏幕（如果存在且不是待机屏幕） */
+        if (g_ai_ui.current_screen && g_ai_ui.current_screen != g_ai_ui.standby_screen) {
+            lv_obj_add_flag(g_ai_ui.current_screen, LV_OBJ_FLAG_HIDDEN);
+            ESP_LOGI(TAG, "Current screen hidden");
+        }
+        
+        /* 创建或显示息屏唤醒页 */
+        if (!g_ai_ui.standby_screen) {
+            ESP_LOGI(TAG, "Creating new standby screen during initialization");
+            g_ai_ui.standby_screen = create_standby_screen();
+            if (g_ai_ui.standby_screen) {
+                ESP_LOGI(TAG, "Standby screen created successfully");
+            } else {
+                ESP_LOGE(TAG, "FAILED: create_standby_screen() returned NULL");
+                lvgl_port_unlock();
+                return;
+            }
+        } else {
+            ESP_LOGI(TAG, "Reusing existing standby screen");
+            lv_obj_clear_flag(g_ai_ui.standby_screen, LV_OBJ_FLAG_HIDDEN);
+            /* 重新应用背景样式 */
+            lv_obj_set_style_bg_color(g_ai_ui.standby_screen, lv_color_black(), LV_PART_MAIN);
+            lv_obj_set_style_bg_opa(g_ai_ui.standby_screen, LV_OPA_COVER, LV_PART_MAIN);
+            /* 重新启动呼吸动画 */
+            restart_breathing_animations();
+            ESP_LOGI(TAG, "Standby screen reused and animations restarted");
+        }
+
+        g_ai_ui.current_screen = g_ai_ui.standby_screen;
+        g_ai_ui.current_state = UI_STATE_STANDBY;
+
+        /* 加载屏幕使其可见 */
+        lv_scr_load(g_ai_ui.standby_screen);
+        ESP_LOGI(TAG, "Standby screen loaded successfully");
+
+        lvgl_port_unlock();
+        ESP_LOGI(TAG, "LVGL port unlocked");
+    } else {
+        ESP_LOGE(TAG, "FAILED: Could not lock LVGL port for standby screen switch!");
+    }
+}
+
+/**
+ * @brief       切换到多模态交互主页
+ * @param       无
+ * @retval      无
+ */
+void ui_switch_to_home(void)
+{
+    if (g_ai_ui.current_state == UI_STATE_HOME) {
+        return;
+    }
+    
+    /* 锁定UI互斥锁 */
+    if (lvgl_port_lock(0)) {
+        /* 隐藏当前屏幕 */
+        if (g_ai_ui.current_screen) {
+            lv_obj_add_flag(g_ai_ui.current_screen, LV_OBJ_FLAG_HIDDEN);
+        }
+        
+        /* 创建或显示主页 */
+        if (!g_ai_ui.home_screen) {
+            g_ai_ui.home_screen = create_home_screen();
+        } else {
+            lv_obj_clear_flag(g_ai_ui.home_screen, LV_OBJ_FLAG_HIDDEN);
+        }
+
+        g_ai_ui.current_screen = g_ai_ui.home_screen;
+        g_ai_ui.current_state = UI_STATE_HOME;
+
+        /* 加载屏幕使其可见 */
+        lv_scr_load(g_ai_ui.home_screen);
+
+        lvgl_port_unlock();
+    }
+}
+
+/**
+ * @brief       切换到硬件控制抽屉
+ * @param       无
+ * @retval      无
+ */
+void ui_switch_to_control(void)
+{
+    if (g_ai_ui.current_state == UI_STATE_CONTROL) {
+        return;
+    }
+    
+    /* 锁定UI互斥锁 */
+    if (lvgl_port_lock(0)) {
+        /* 隐藏当前屏幕 */
+        if (g_ai_ui.current_screen) {
+            lv_obj_add_flag(g_ai_ui.current_screen, LV_OBJ_FLAG_HIDDEN);
+        }
+        
+        /* 创建或显示控制面板 */
+        if (!g_ai_ui.control_panel) {
+            g_ai_ui.control_panel = create_control_panel();
+        } else {
+            lv_obj_clear_flag(g_ai_ui.control_panel, LV_OBJ_FLAG_HIDDEN);
+        }
+
+        g_ai_ui.current_screen = g_ai_ui.control_panel;
+        g_ai_ui.current_state = UI_STATE_CONTROL;
+
+        /* 加载屏幕使其可见 */
+        lv_scr_load(g_ai_ui.control_panel);
+
+        lvgl_port_unlock();
+    }
+}
+
+/**
+ * @brief       切换到知识库与影像视图
+ * @param       无
+ * @retval      无
+ */
+void ui_switch_to_viewer(void)
+{
+    if (g_ai_ui.current_state == UI_STATE_VIEWER) {
+        return;
+    }
+    
+    /* 锁定UI互斥锁 */
+    if (lvgl_port_lock(0)) {
+        /* 隐藏当前屏幕 */
+        if (g_ai_ui.current_screen) {
+            lv_obj_add_flag(g_ai_ui.current_screen, LV_OBJ_FLAG_HIDDEN);
+        }
+        
+        /* 创建或显示影像查看器 */
+        if (!g_ai_ui.viewer_screen) {
+            g_ai_ui.viewer_screen = create_viewer_screen();
+        } else {
+            lv_obj_clear_flag(g_ai_ui.viewer_screen, LV_OBJ_FLAG_HIDDEN);
+        }
+
+        g_ai_ui.current_screen = g_ai_ui.viewer_screen;
+        g_ai_ui.current_state = UI_STATE_VIEWER;
+
+        /* 加载屏幕使其可见 */
+        lv_scr_load(g_ai_ui.viewer_screen);
+
+        lvgl_port_unlock();
+    }
+}
+
+/**
+ * @brief       触发唤醒动画并切换到主页
+ * @param       无
+ * @retval      无
+ */
+void ui_trigger_wake_up(void)
+{
+    if (g_ai_ui.current_state != UI_STATE_STANDBY) {
+        return;
+    }
+    
+    /* 在息屏状态下触发唤醒 */
+    trigger_standby_wake_up();
+}
+
+/**
+ * @brief       更新流式文本显示
+ * @param       ch: 要显示的字符
+ * @param       is_complete: 是否为完整消息结束
+ * @retval      无
+ */
+void ui_update_streaming_text(char ch, bool is_complete)
+{
+    stream_text_msg_t msg = {0};
+    msg.character = ch;
+    msg.is_complete = is_complete;
+    
+    /* 发送到文本队列（非阻塞） */
+    if (g_ai_ui.text_queue) {
+        xQueueSend(g_ai_ui.text_queue, &msg, 0);
+    }
+}
+
+/**
+ * @brief       更新硬件状态显示
+ * @param       brightness: 屏幕亮度 (0-100)
+ * @param       fan_on: 排风扇开关状态
+ * @retval      无
+ */
+void ui_update_hardware_status(uint8_t brightness, bool fan_on)
+{
+    hardware_control_msg_t msg = {0};
+    msg.brightness = brightness;
+    msg.fan_state = fan_on;
+    
+    /* 发送到硬件队列（非阻塞） */
+    if (g_ai_ui.hardware_queue) {
+        xQueueSend(g_ai_ui.hardware_queue, &msg, 0);
+    }
+}
+
+/**
+ * @brief       处理手势事件
+ * @param       gesture: 手势类型
+ * @param       x: 手势X坐标
+ * @param       y: 手势Y坐标
+ * @retval      无
+ */
+void ui_handle_gesture_event(gesture_type_t gesture, int16_t x, int16_t y)
+{
+    gesture_msg_t msg = {0};
+    msg.gesture = gesture;
+    msg.x = x;
+    msg.y = y;
+    
+    /* 发送到手势队列（非阻塞） */
+    if (g_ai_ui.gesture_queue) {
+        xQueueSend(g_ai_ui.gesture_queue, &msg, 0);
+    }
+}
+
+/**
+ * @brief       初始化现代化UI样式
+ * @param       无
+ * @retval      无
+ */
+void init_modern_styles(void)
+{
+    /* 启用抗锯齿 */
+    lv_theme_default_init(NULL, lv_palette_main(LV_PALETTE_BLUE), lv_palette_main(LV_PALETTE_RED),
+                         LV_THEME_DEFAULT_DARK, LV_FONT_DEFAULT);
+    
+    /* 设置全局默认样式 */
+    lv_style_t global_style;
+    lv_style_init(&global_style);
+    lv_style_set_radius(&global_style, 8);  // 圆角半径
+    lv_style_set_border_width(&global_style, 0);
+    lv_style_set_pad_all(&global_style, 8);
+    
+    /* 应用到所有对象 */
+    lv_obj_add_style(lv_scr_act(), &global_style, 0);
+}
